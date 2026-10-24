@@ -266,7 +266,7 @@ class EpisodeLogWrapper(gym.Wrapper):
         self.path = path
         if not os.path.exists(path):
             with open(path, "w", newline="") as f:
-                csv.writer(f).writerow(["episode", "time", "return", "succeed", "length", "intervened_steps"])
+                csv.writer(f, lineterminator="\n").writerow(["episode", "time", "return", "succeed", "length", "intervened_steps"])
         with open(path) as f:
             self._episode = sum(1 for _ in f) - 1  # continue numbering after a resume
 
@@ -281,7 +281,7 @@ class EpisodeLogWrapper(gym.Wrapper):
         self._intervened += "intervene_action" in info
         if terminated or truncated:
             with open(self.path, "a", newline="") as f:
-                csv.writer(f).writerow([self._episode, f"{time.time():.1f}", self._return,
+                csv.writer(f, lineterminator="\n").writerow([self._episode, f"{time.time():.1f}", self._return,
                                         int(info["succeed"]), self._length, self._intervened])
             self._episode += 1
         return obs, reward, terminated, truncated, info

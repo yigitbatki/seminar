@@ -91,8 +91,8 @@ while true; do
   sleep 30
   prune
   steps=$(env_steps); ck=$(latest_ckpt)
-  sr=$(awk -F, 'NR>1 && $6==0 {n++; s+=$4} END{if(n) printf "%d/%d", s, n; else print "0/0"}' "$EPLOG" 2>/dev/null)
-  last20=$(awk -F, 'NR>1 && $6==0 {a[n++]=$4} END{s=0; m=0; for(i=n-20;i<n;i++) if(i>=0){s+=a[i]; m++}; if(m) printf "%d/%d", s, m; else print "-"}' "$EPLOG" 2>/dev/null)
+  sr=$(awk -F, '{sub(/\r$/, "")} NR>1 && $6+0==0 {n++; s+=$4} END{if(n) printf "%d/%d", s, n; else print "0/0"}' "$EPLOG" 2>/dev/null)
+  last20=$(awk -F, '{sub(/\r$/, "")} NR>1 && $6+0==0 {a[n++]=$4} END{s=0; m=0; for(i=n-20;i<n;i++) if(i>=0){s+=a[i]; m++}; if(m) printf "%d/%d", s, m; else print "-"}' "$EPLOG" 2>/dev/null)
   now=$(date +%s); a=$(tqdm_n "$ALOG" '/'); l=$(tqdm_n "$LLOG" 'learner'); a=${a:-0}; l=${l:-0}
   rates=$(awk -v da=$((a - prev_a)) -v dl=$((l - prev_l)) -v dt=$((now - prev_t)) 'BEGIN{printf "%.1f env steps/s, %.1f learner updates/s", da/dt, dl/dt}')
   prev_t=$now; prev_a=$a; prev_l=$l
