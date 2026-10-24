@@ -1,0 +1,32 @@
+diff --git a/examples/experiments/mappings.py b/examples/experiments/mappings.py
+index 8bdabd0..4fc557a 100644
+--- a/examples/experiments/mappings.py
++++ b/examples/experiments/mappings.py
+@@ -1,11 +1,21 @@
+-from experiments.ram_insertion.config import TrainConfig as RAMInsertionTrainConfig
+-from experiments.usb_pickup_insertion.config import TrainConfig as USBPickupInsertionTrainConfig
+-from experiments.object_handover.config import TrainConfig as ObjectHandoverTrainConfig
+-from experiments.egg_flip.config import TrainConfig as EggFlipTrainConfig
++from experiments.sim_pick_cube.config import TrainConfig as SimPickCubeTrainConfig
+ 
+ CONFIG_MAPPING = {
++                "sim_pick_cube": SimPickCubeTrainConfig,
++               }
++
++# The real-robot tasks need serl_robot_infra (franka_env), which a sim-only install does not have.
++try:
++    from experiments.ram_insertion.config import TrainConfig as RAMInsertionTrainConfig
++    from experiments.usb_pickup_insertion.config import TrainConfig as USBPickupInsertionTrainConfig
++    from experiments.object_handover.config import TrainConfig as ObjectHandoverTrainConfig
++    from experiments.egg_flip.config import TrainConfig as EggFlipTrainConfig
++
++    CONFIG_MAPPING.update({
+                 "ram_insertion": RAMInsertionTrainConfig,
+                 "usb_pickup_insertion": USBPickupInsertionTrainConfig,
+                 "object_handover": ObjectHandoverTrainConfig,
+                 "egg_flip": EggFlipTrainConfig,
+-               }
+\ No newline at end of file
++               })
++except ImportError:
++    pass

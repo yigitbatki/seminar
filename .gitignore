@@ -1,0 +1,19 @@
+# data, checkpoints and run outputs
+demo_data/
+*.pkl
+*.npz
+checkpoint_*/
+buffer/
+demo_buffer/
+experiments/sim_pick_cube/*/
+classifier_ckpt/
+logs/
+wandb/
+*.log
+# environments and caches
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.zip
+*:Zone.Identifier

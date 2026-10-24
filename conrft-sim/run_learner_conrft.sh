@@ -1,0 +1,12 @@
+# Stage 2 (HIL-ConRFT): online learner. Start this, then run_actor_conrft.sh in a second process.
+export MUJOCO_GL=${MUJOCO_GL:-egl}
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-.5}
+cd "$(dirname "$0")/../.." && python train_conrft_octo.py \
+    --exp_name=sim_pick_cube \
+    --checkpoint_path=${CKPT:-$PWD/experiments/sim_pick_cube/conrft} \
+    --q_weight=1.0 --bc_weight=0.1 \
+    --demo_path=${DEMO_PATH:?set DEMO_PATH to the .pkl from run_record_demos.sh} \
+    --pretrain_steps=${PRETRAIN_STEPS:-20000} \
+    --debug=${DEBUG:-True} \
+    --learner "$@"
