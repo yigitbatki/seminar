@@ -1,4 +1,6 @@
 # Stage 1 (Cal-ConRFT): offline pretraining on the demos. Exits when done.
+# Colab sets MPLBACKEND to its inline backend, which the venv does not have.
+export MPLBACKEND=Agg
 export MUJOCO_GL=${MUJOCO_GL:-egl}
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-.5}

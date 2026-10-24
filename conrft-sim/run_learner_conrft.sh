@@ -1,4 +1,6 @@
 # Stage 2 (HIL-ConRFT): online learner. Start this, then run_actor_conrft.sh in a second process.
+# Colab sets MPLBACKEND to its inline backend, which the venv does not have.
+export MPLBACKEND=Agg
 export MUJOCO_GL=${MUJOCO_GL:-egl}
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-.5}
