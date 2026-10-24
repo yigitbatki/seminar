@@ -10,6 +10,7 @@ mkdir -p $LOGS
 cd $WORKDIR/hil-serl/examples
 source $WORKDIR/.venv/bin/activate
 unset PYTHONPATH
+export MPLBACKEND=Agg  # Colab's inline backend is not installed in the venv
 export CKPT=$PWD/experiments/sim_pick_cube/$RUN
 export HILSERL_SIM_CKPT_PERIOD=${HILSERL_SIM_CKPT_PERIOD:-500}
 EPLOG=$LOGS/episodes.csv

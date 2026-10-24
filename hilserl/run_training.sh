@@ -65,7 +65,7 @@ LLOG="$RUN_DIR/logs/learner-$STAMP.log"; ALOG="$RUN_DIR/logs/actor-$STAMP.log"
 yes "" | XLA_PYTHON_CLIENT_MEM_FRACTION=${LEARNER_FRAC:-.72} bash experiments/sim_pick_cube/run_learner.sh > "$LLOG" 2>&1 &
 LP=$!
 until grep -q "starting learner loop" "$LLOG" || ! kill -0 $LP 2>/dev/null; do sleep 2; done
-kill -0 $LP 2>/dev/null || { echo "learner died, see $LLOG"; tail -5 "$LLOG"; exit 1; }
+kill -0 $LP 2>/dev/null || { echo "learner died, see $LLOG"; tail -20 "$LLOG"; exit 1; }
 yes "" | HILSERL_SIM_EPISODE_LOG="$RUN_DIR/episodes.csv" XLA_PYTHON_CLIENT_MEM_FRACTION=${ACTOR_FRAC:-.15} \
   bash experiments/sim_pick_cube/run_actor.sh > "$ALOG" 2>&1 &
 AP=$!
@@ -95,8 +95,8 @@ while true; do
   if [ "${ck:-}" != "${last_ckpt:-}" ] || [ $(( $(date +%s) - last_sync )) -ge $(( SYNC_MIN * 60 )) ]; then
     sync_out; last_sync=$(date +%s); last_ckpt=$ck
   fi
-  kill -0 $LP 2>/dev/null || { echo "learner exited, see $LLOG"; tail -5 "$LLOG"; break; }
-  kill -0 $AP 2>/dev/null || { echo "actor exited, see $ALOG"; tail -5 "$ALOG"; break; }
+  kill -0 $LP 2>/dev/null || { echo "learner exited, see $LLOG"; tail -20 "$LLOG"; break; }
+  kill -0 $AP 2>/dev/null || { echo "actor exited, see $ALOG"; tail -20 "$ALOG"; break; }
   [ "$steps" -ge "$TARGET_ENV_STEPS" ] && { echo "reached $steps env steps"; break; }
 done
 stop
