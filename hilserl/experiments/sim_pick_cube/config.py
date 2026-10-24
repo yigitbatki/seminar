@@ -1,5 +1,7 @@
 import os
 
+import numpy as np
+
 from serl_launcher.wrappers.serl_obs_wrappers import SERLObsWrapper
 from serl_launcher.wrappers.chunking import ChunkingWrapper
 
@@ -29,6 +31,7 @@ class TrainConfig(DefaultTrainingConfig):
       HILSERL_SIM_SEED=42               seeds the cube positions, the expert and (as --seed)
                                         train_rlpd.py's networks
       HILSERL_SIM_CUBE_RANGE=default    cube start area: default | wide (1.5x the area)
+      HILSERL_SIM_CUBE_POSITIONS=f.npy  fixed (N, 2) cube x, y used in order instead (optional)
       HILSERL_SIM_DISCOUNT=0.97, HILSERL_SIM_CTA_RATIO=2 (critic updates per actor update),
       HILSERL_SIM_ENCODER=resnet-pretrained | resnet
       HILSERL_SIM_HZ=10         wall-clock cap on env steps/s, like the real Franka's 10 Hz
@@ -66,6 +69,8 @@ class TrainConfig(DefaultTrainingConfig):
             control_hz=float(os.environ.get("HILSERL_SIM_HZ", "10")),
             cube_range=os.environ.get("HILSERL_SIM_CUBE_RANGE", "default"),
             seed=env_seed,
+            cube_positions=np.load(os.environ["HILSERL_SIM_CUBE_POSITIONS"])
+            if os.environ.get("HILSERL_SIM_CUBE_POSITIONS") else None,
         )
         if not fake_env:
             env = SimExpertIntervention(

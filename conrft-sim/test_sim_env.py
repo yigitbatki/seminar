@@ -10,7 +10,8 @@ import time
 
 import numpy as np
 
-os.environ.setdefault("CONRFT_SIM_MODE", "demo")
+os.environ.setdefault("HILSERL_SIM_MODE", "demo")
+os.environ.setdefault("HILSERL_SIM_HZ", "0")
 from experiments.mappings import CONFIG_MAPPING  # noqa: E402
 
 

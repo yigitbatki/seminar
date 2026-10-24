@@ -27,7 +27,8 @@ copy our task in, so nothing upstream is vendored here.
 | `hilserl/evaluate.py` | Evaluates a checkpoint without expert help on fixed evaluation cubes: sampled actions and the policy's mode, results as JSON |
 | `hilserl/experiment_queue.py`, `make_demo_set.py` | Runs a list of experiments (settings that differ from run 2) one after another with training, evaluation, `DONE` markers and resume; builds nested demo sets; `summarize()` makes the comparison table (Wilson 95% CIs) and overlaid learning curves |
 | `hilserl/HILSERL_sim_colab.ipynb` | The whole HIL-SERL pipeline on Colab (L4/A100 recommended), with the run kept in Google Drive so a disconnect only costs the steps since the last checkpoint |
-| `conrft-sim/` | The task for ConRFT (Octo-small backbone) with `setup.sh`, import fixes (`apply_patches.py`), run scripts and a Colab notebook. See `conrft-sim/README.md` |
+| `conrft-sim/` | ConRFT (Octo-small backbone) on the shared task: `setup.sh` (pinned clones, `apply_patches.py`), resumable `run_conrft.sh`, `evaluate_conrft.py`, `octo_test.sh` and a Colab notebook. See `conrft-sim/README.md` |
+| `hilserl/cube_positions_from_demos.py` | Recovers each demo's cube position (run 2's demos predate seeded cubes), so ConRFT's demos can use the same 20 cubes |
 
 ## Quickstart: HIL-SERL
 ```bash
@@ -71,15 +72,21 @@ updates per env step than in the paper; the cap keeps it near one. Set it to 0 t
 recording runs uncapped).
 
 ## Quickstart: ConRFT
+ConRFT uses the same task file as HIL-SERL (`hilserl/experiments/sim_pick_cube/sim_env.py`), so cube
+positions, expert, interventions, 10 Hz rate and evaluation cubes are identical. Stages: SFT and
+Cal-ConRFT (offline on the demos), then HIL-ConRFT (online with interventions) from a pretraining
+checkpoint; HG-DAgger as a baseline. See `conrft-sim/README.md`.
 ```bash
 bash conrft-sim/setup.sh gpu ~/conrft-sim-work
 source ~/conrft-sim-work/.venv/bin/activate && cd ~/conrft-sim-work/conrft/examples
 MUJOCO_GL=egl python test_sim_env.py --episodes 5
-bash experiments/sim_pick_cube/run_record_demos.sh
-export DEMO_PATH=$(ls $PWD/demo_data/sim_pick_cube_*.pkl | tail -1)
-bash experiments/sim_pick_cube/run_learner_conrft_pretrain.sh    # needs > 6 GB GPU memory, see below
+N_DEMOS=20 bash experiments/sim_pick_cube/run_record_demos.sh
+export DEMO_PATH=$(ls $PWD/demo_data/sim_pick_cube_20_demos_*.pkl | tail -1)
+STAGE=pretrain RUN_DIR=~/runs/cal bash ~/seminar-repo/conrft-sim/run_conrft.sh        # needs > 6 GB GPU memory
+STAGE=online RUN_DIR=~/runs/hil INIT_CKPT=~/runs/cal/ckpt/checkpoint_20000 bash ~/seminar-repo/conrft-sim/run_conrft.sh
 ```
-The Colab notebook `conrft-sim/ConRFT_sim_colab.ipynb` expects this folder in Drive as `MyDrive/conrft-sim`.
+On Colab, `conrft-sim/ConRFT_sim_colab.ipynb` (A100, High RAM) runs a short real-Octo memory/speed
+test and then an experiment queue; its results join the HIL-SERL runs in one summary table.
 
 ## Tested on
 RTX 3060 Laptop GPU (6 GB), 16 CPU threads, Windows + WSL2 (Ubuntu, 7 GB RAM), driver 546.80, 24 Oct 2026.
