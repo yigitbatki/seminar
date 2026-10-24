@@ -22,6 +22,8 @@ copy our task in, so nothing upstream is vendored here.
 | `hilserl/mappings.patch` | Registers `sim_pick_cube`; makes the real-robot configs optional (they need `franka_env`) |
 | `hilserl/install.sh`, `requirements-hilserl.txt` | Python 3.10 venv: jax 0.4.20 (CUDA 11), cuDNN 8.9.6.50, HIL-SERL's `serl_launcher`, `franka_sim` |
 | `hilserl/smoke_test.sh` | Runs learner + actor together and stops after N env steps or N minutes |
+| `hilserl/run_training.sh` | Resumable training: learner + actor, checkpoints and buffer dumps pruned and copied to a sync folder (e.g. Google Drive); re-running it continues from the latest checkpoint |
+| `hilserl/HILSERL_sim_colab.ipynb` | The whole HIL-SERL pipeline on Colab (L4/A100 recommended), with the run kept in Google Drive so a disconnect only costs the steps since the last checkpoint |
 | `conrft-sim/` | The task for ConRFT (Octo-small backbone) with `setup.sh`, import fixes (`apply_patches.py`), run scripts and a Colab notebook. See `conrft-sim/README.md` |
 
 ## Quickstart: HIL-SERL
@@ -37,6 +39,14 @@ MAX_ENV_STEPS=2000 MAX_MIN=20 bash ~/hilserl-work/smoke_test.sh smoke1
 XLA_PYTHON_CLIENT_MEM_FRACTION=.72 bash experiments/sim_pick_cube/run_learner.sh
 XLA_PYTHON_CLIENT_MEM_FRACTION=.15 bash experiments/sim_pick_cube/run_actor.sh
 ```
+Long run that can be stopped and resumed (re-run the same command to continue):
+```bash
+DEMO_PATH=... RUN_DIR=~/hilserl-runs/run1 SYNC_DIR=/path/to/backup/run1 TARGET_ENV_STEPS=30000 \
+  bash ~/seminar-repo/hilserl/run_training.sh
+```
+On Colab, open `hilserl/HILSERL_sim_colab.ipynb` (GPU runtime: L4 or A100, High RAM) and *Run all*; after a
+disconnect, *Run all* again with the same `RUN_NAME`. G4 (Blackwell) does not work with jax 0.4.20 / CUDA 11.
+
 Task settings: 2 cameras at 128×128 (`front`, `wrist`), 7-D actions with a learned gripper
 (`single-arm-learned-gripper`, grasp DQN critic), reward 1 on success and 0 otherwise, episode ends on
 success or after 100 steps, frozen pretrained ResNet-10 encoder, RLPD with 50/50 demo/online batches.

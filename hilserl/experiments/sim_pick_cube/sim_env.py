@@ -258,7 +258,8 @@ class EpisodeLogWrapper(gym.Wrapper):
         if not os.path.exists(path):
             with open(path, "w", newline="") as f:
                 csv.writer(f).writerow(["episode", "time", "return", "succeed", "length", "intervened_steps"])
-        self._episode = 0
+        with open(path) as f:
+            self._episode = sum(1 for _ in f) - 1  # continue numbering after a resume
 
     def reset(self, **kwargs):
         self._return, self._length, self._intervened = 0.0, 0, 0
