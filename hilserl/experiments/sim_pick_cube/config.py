@@ -21,6 +21,9 @@ class TrainConfig(DefaultTrainingConfig):
       HILSERL_SIM_MODE=online   expert takes over in some episodes (default)
       HILSERL_SIM_INTERVENE_PROB=0.2   probability of a takeover per episode
       HILSERL_SIM_EPISODE_LOG=path.csv  one row per actor episode
+      HILSERL_SIM_HZ=10         wall-clock cap on env steps/s, like the real Franka's 10 Hz
+                                control loop; keeps about one learner update per env step
+                                on fast GPUs (0 = no cap)
     HILSERL_SIM_BUFFER, HILSERL_SIM_BATCH_SIZE and HILSERL_SIM_CKPT_PERIOD override
     the replay buffer capacity, batch size and checkpoint period.
     """
@@ -44,7 +47,10 @@ class TrainConfig(DefaultTrainingConfig):
     setup_mode = "single-arm-learned-gripper"
 
     def get_environment(self, fake_env=False, save_video=False, classifier=False):
-        env = SimPickCubeEnv(max_episode_length=self.max_traj_length)
+        env = SimPickCubeEnv(
+            max_episode_length=self.max_traj_length,
+            control_hz=float(os.environ.get("HILSERL_SIM_HZ", "10")),
+        )
         if not fake_env:
             env = SimExpertIntervention(
                 env,

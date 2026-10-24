@@ -39,6 +39,7 @@ class SimPickCubeEnv(gym.Env):
         reward_neg=0.0,
         action_scale=(0.05, 1.0),
         image_size=128,
+        control_hz=0.0,
         seed=None,
     ):
         self._env = PandaPickCubeGymEnv(
@@ -54,6 +55,9 @@ class SimPickCubeEnv(gym.Env):
         self.success_reward = success_reward
         self.reward_neg = reward_neg
         self._t = 0
+        # Wall-clock cap on the step rate, like the real robot's control loop (0 = as fast as possible).
+        self.control_hz = control_hz
+        self._next_step_time = 0.0
 
         self.observation_space = spaces.Dict(
             {
@@ -116,6 +120,11 @@ class SimPickCubeEnv(gym.Env):
         return self._convert_obs(obs), {"succeed": False}
 
     def step(self, action):
+        if self.control_hz > 0:
+            now = time.monotonic()
+            if now < self._next_step_time:
+                time.sleep(self._next_step_time - now)
+            self._next_step_time = max(now, self._next_step_time) + 1.0 / self.control_hz
         action = np.asarray(action, dtype=np.float32)
         grasp = action[-1]
         sim_action = np.array(

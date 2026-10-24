@@ -52,7 +52,12 @@ Task settings: 2 cameras at 128×128 (`front`, `wrist`), 7-D actions with a lear
 success or after 100 steps, frozen pretrained ResNet-10 encoder, RLPD with 50/50 demo/online batches.
 Environment variables: `HILSERL_SIM_MODE` (`demo`/`online`), `HILSERL_SIM_INTERVENE_PROB` (0.2),
 `HILSERL_SIM_BUFFER` (20000), `HILSERL_SIM_BATCH_SIZE` (256), `HILSERL_SIM_CKPT_PERIOD` (2000),
-`HILSERL_SIM_EPISODE_LOG` (CSV path).
+`HILSERL_SIM_EPISODE_LOG` (CSV path), `HILSERL_SIM_HZ` (10).
+
+`HILSERL_SIM_HZ` caps the actor at 10 env steps/s, the real Franka's control rate. On a fast GPU the
+uncapped simulator (~80 steps/s on a Colab L4) would outrun the learner and leave far fewer gradient
+updates per env step than in the paper; the cap keeps it near one. Set it to 0 to disable (demo
+recording runs uncapped).
 
 ## Quickstart: ConRFT
 ```bash
