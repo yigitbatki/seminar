@@ -18,6 +18,8 @@ command -v uv >/dev/null 2>&1 || { curl -LsSf https://astral.sh/uv/install.sh | 
 [ -d serl ]   || git clone --depth 1 https://github.com/rail-berkeley/serl.git
 
 # 2. Python 3.10 environment (Octo needs TensorFlow 2.15, which has no wheels for Python 3.12).
+# Colab points uv at the system Python (3.12+); always target our 3.10 venv instead.
+unset UV_SYSTEM_PYTHON UV_PYTHON
 [ -d .venv ] || uv venv -p 3.10 .venv
 export VIRTUAL_ENV="$WORKDIR/.venv"
 export PATH="$VIRTUAL_ENV/bin:$PATH"
@@ -31,10 +33,10 @@ else
 fi
 
 # 3. One pinned set that satisfies Octo, ConRFT's serl_launcher and franka_sim together.
-uv pip install "${JAX_INDEX[@]}" "$JAX_SPEC" -r "$HERE/requirements-pinned.txt"
+uv pip install --python "$WORKDIR/.venv/bin/python" "${JAX_INDEX[@]}" "$JAX_SPEC" -r "$HERE/requirements-pinned.txt"
 # jaxlib 0.4.20+cuda11.cudnn86 needs cuDNN 8.x; left unpinned, uv picks cuDNN 9 and jax falls back to CPU.
-if [ "$DEVICE" = "gpu" ]; then uv pip install "nvidia-cudnn-cu11==8.9.6.50"; fi
-uv pip install --no-deps -e octo -e conrft/serl_launcher -e serl/franka_sim
+if [ "$DEVICE" = "gpu" ]; then uv pip install --python "$WORKDIR/.venv/bin/python" "nvidia-cudnn-cu11==8.9.6.50"; fi
+uv pip install --python "$WORKDIR/.venv/bin/python" --no-deps -e octo -e conrft/serl_launcher -e serl/franka_sim
 
 # 4. Fix two import bugs in the public ConRFT code.
 python "$HERE/apply_patches.py" conrft
