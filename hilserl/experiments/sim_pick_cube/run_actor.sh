@@ -1,4 +1,6 @@
 export HILSERL_SIM_MODE=${HILSERL_SIM_MODE:-online}
+# Colab sets MPLBACKEND to its inline backend, which the venv does not have.
+export MPLBACKEND=Agg
 export MUJOCO_GL=${MUJOCO_GL:-egl}
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-.2}
