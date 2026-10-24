@@ -12,7 +12,9 @@ import csv
 import os
 import time
 
+import cv2
 import gymnasium as gym
+import mujoco
 import numpy as np
 from gymnasium import spaces
 
@@ -53,7 +55,14 @@ class SimPickCubeEnv(gym.Env):
         control_hz=0.0,
         cube_range="default",
         seed=None,
+        image_keys=("front", "wrist"),
+        wrist_size=None,
+        cube_positions=None,
     ):
+        """image_size is the front camera's (and rendering) resolution; wrist_size, if different,
+        resizes the wrist camera. image_keys names the two cameras in the observation (ConRFT
+        uses "side_policy_256" at 256 px and "wrist_1" at 128 px). cube_positions, an (N, 2)
+        array of cube x, y, replaces the random cube positions (used in order, cycling)."""
         # franka_sim reads these module-level bounds on every reset/step.
         panda_pick._SAMPLING_BOUNDS = np.asarray(CUBE_RANGES[cube_range]["sampling"])
         panda_pick._CARTESIAN_BOUNDS = np.asarray(CUBE_RANGES[cube_range]["cartesian"])
@@ -67,6 +76,10 @@ class SimPickCubeEnv(gym.Env):
             time_limit=1e6,  # episode length is handled here instead
             seed=0 if seed is None else seed,
         )
+        self.front_key, self.wrist_key = image_keys
+        self.wrist_size = wrist_size or image_size
+        self.cube_positions = None if cube_positions is None else np.asarray(cube_positions, dtype=np.float64)
+        self._cube_index = 0
         self.max_episode_length = max_episode_length
         self.lift_height = lift_height
         self.success_reward = success_reward
@@ -87,11 +100,11 @@ class SimPickCubeEnv(gym.Env):
                 ),
                 "images": spaces.Dict(
                     {
-                        "front": spaces.Box(
+                        self.front_key: spaces.Box(
                             0, 255, shape=(image_size, image_size, 3), dtype=np.uint8
                         ),
-                        "wrist": spaces.Box(
-                            0, 255, shape=(image_size, image_size, 3), dtype=np.uint8
+                        self.wrist_key: spaces.Box(
+                            0, 255, shape=(self.wrist_size, self.wrist_size, 3), dtype=np.uint8
                         ),
                     }
                 ),
@@ -117,6 +130,9 @@ class SimPickCubeEnv(gym.Env):
         return self._env._z_init
 
     def _convert_obs(self, obs):
+        wrist = obs["images"]["wrist"]
+        if wrist.shape[0] != self.wrist_size:
+            wrist = cv2.resize(wrist, (self.wrist_size, self.wrist_size), interpolation=cv2.INTER_AREA)
         return {
             "state": {
                 "gripper_pose": np.atleast_1d(obs["state"]["panda/gripper_pos"]).astype(np.float32),
@@ -124,8 +140,8 @@ class SimPickCubeEnv(gym.Env):
                 "tcp_vel": obs["state"]["panda/tcp_vel"].astype(np.float32),
             },
             "images": {
-                "front": np.ascontiguousarray(obs["images"]["front"], dtype=np.uint8),
-                "wrist": np.ascontiguousarray(obs["images"]["wrist"], dtype=np.uint8),
+                self.front_key: np.ascontiguousarray(obs["images"]["front"], dtype=np.uint8),
+                self.wrist_key: np.ascontiguousarray(wrist, dtype=np.uint8),
             },
         }
 
@@ -137,6 +153,14 @@ class SimPickCubeEnv(gym.Env):
         obs, _ = self._env.reset()
         self._cube_rng_state = np.random.get_state()
         np.random.set_state(outer)
+        if self.cube_positions is not None:
+            xy = self.cube_positions[self._cube_index % len(self.cube_positions)]
+            self._cube_index += 1
+            sim = self._env
+            sim._data.jnt("block").qpos[:3] = (*xy, sim._block_z)
+            mujoco.mj_forward(sim._model, sim._data)
+            sim._z_init = sim._data.sensor("block_pos").data[2]
+            obs = sim._compute_observation()
         self._t = 0
         return self._convert_obs(obs), {"succeed": False}
 
