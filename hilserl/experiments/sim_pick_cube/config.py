@@ -26,7 +26,9 @@ class TrainConfig(DefaultTrainingConfig):
       HILSERL_SIM_EXPERT_NOISE=0.1      std of the noise on the expert's xyz actions
       HILSERL_SIM_LIFT_HEIGHT=0.1       lift (m) that counts as success
       HILSERL_SIM_MAX_EPISODE_STEPS=100
-      HILSERL_SIM_SEED=42               also passed to train_rlpd.py as --seed
+      HILSERL_SIM_SEED=42               seeds the cube positions, the expert and (as --seed)
+                                        train_rlpd.py's networks
+      HILSERL_SIM_CUBE_RANGE=default    cube start area: default | wide (1.5x the area)
       HILSERL_SIM_DISCOUNT=0.97, HILSERL_SIM_CTA_RATIO=2 (critic updates per actor update),
       HILSERL_SIM_ENCODER=resnet-pretrained | resnet
       HILSERL_SIM_HZ=10         wall-clock cap on env steps/s, like the real Franka's 10 Hz
@@ -56,13 +58,13 @@ class TrainConfig(DefaultTrainingConfig):
     setup_mode = "single-arm-learned-gripper"
 
     def get_environment(self, fake_env=False, save_video=False, classifier=False):
-        # Seed 42 (train_rlpd.py's default) keeps the env and expert seeds at 0, as in run 2.
-        seed = int(os.environ.get("HILSERL_SIM_SEED", "42"))
-        env_seed = 0 if seed == 42 else seed
+        # The seed also drives the cube positions and the expert's takeover/noise RNG.
+        env_seed = int(os.environ.get("HILSERL_SIM_SEED", "42"))
         env = SimPickCubeEnv(
             max_episode_length=self.max_traj_length,
             lift_height=float(os.environ.get("HILSERL_SIM_LIFT_HEIGHT", "0.1")),
             control_hz=float(os.environ.get("HILSERL_SIM_HZ", "10")),
+            cube_range=os.environ.get("HILSERL_SIM_CUBE_RANGE", "default"),
             seed=env_seed,
         )
         if not fake_env:
