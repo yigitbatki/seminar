@@ -77,14 +77,20 @@ stop() {
 }
 trap 'echo interrupted; stop; exit 130' INT TERM
 
+# Latest tqdm count in a log ("<n>/<total> ["); pattern selects the progress bar.
+tqdm_n() { tail -c 4000 "$1" | tr '\r' '\n' | grep -a "$2" | grep -aoE '[0-9]+/[0-9]+ \[' | tail -1 | cut -d/ -f1; }
 last_sync=$(date +%s); last_ckpt=$(latest_ckpt)
+prev_t=$(date +%s); prev_a=0; prev_l=0
 while true; do
   sleep 30
   prune
   steps=$(env_steps); ck=$(latest_ckpt)
   sr=$(awk -F, 'NR>1 && $6==0 {n++; s+=$4} END{if(n) printf "%d/%d", s, n; else print "0/0"}' "$RUN_DIR/episodes.csv" 2>/dev/null)
   last20=$(awk -F, 'NR>1 && $6==0 {a[n++]=$4} END{s=0; m=0; for(i=n-20;i<n;i++) if(i>=0){s+=a[i]; m++}; if(m) printf "%d/%d", s, m; else print "-"}' "$RUN_DIR/episodes.csv" 2>/dev/null)
-  echo "$(date +%T) env steps $steps, checkpoint ${ck:-none}, policy successes (no takeover): $sr overall, $last20 in last 20"
+  now=$(date +%s); a=$(tqdm_n "$ALOG" '/'); l=$(tqdm_n "$LLOG" 'learner'); a=${a:-0}; l=${l:-0}
+  rates=$(awk -v da=$((a - prev_a)) -v dl=$((l - prev_l)) -v dt=$((now - prev_t)) 'BEGIN{printf "%.1f env steps/s, %.1f learner updates/s", da/dt, dl/dt}')
+  prev_t=$now; prev_a=$a; prev_l=$l
+  echo "$(date +%T) env steps $steps, $rates, checkpoint ${ck:-none}, policy successes (no takeover): $sr overall, $last20 in last 20"
   if [ "${ck:-}" != "${last_ckpt:-}" ] || [ $(( $(date +%s) - last_sync )) -ge $(( SYNC_MIN * 60 )) ]; then
     sync_out; last_sync=$(date +%s); last_ckpt=$ck
   fi
