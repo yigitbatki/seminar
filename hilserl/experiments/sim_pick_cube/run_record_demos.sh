@@ -1,6 +1,6 @@
 # Record demos with the scripted expert (stands in for the SpaceMouse).
 export HILSERL_SIM_MODE=demo
-export HILSERL_SIM_HZ=${HILSERL_SIM_HZ:-0}  # no need to pace the scripted expert
+export HILSERL_SIM_HZ=0  # no need to pace the scripted expert
 # Colab sets MPLBACKEND to its inline backend, which the venv does not have.
 export MPLBACKEND=Agg
 export MUJOCO_GL=${MUJOCO_GL:-egl}

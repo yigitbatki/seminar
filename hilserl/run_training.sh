@@ -31,7 +31,9 @@ EPLOG="$LOGDIR/episodes.csv"
 sync_out() {
   [ -n "$SYNC_DIR" ] || return 0
   mkdir -p "$SYNC_DIR"
-  rsync -a --delete --exclude '*tmp*' "$RUN_DIR"/ "$SYNC_DIR"/ && echo "$(date +%T) synced to $SYNC_DIR"
+  # Files the notebook or the queue add next to the run (results, videos) are excluded, so --delete keeps them.
+  rsync -a --delete --exclude '*tmp*' --exclude 'videos/' --exclude 'results.json' --exclude 'settings.json' \
+    --exclude 'DONE' "$RUN_DIR"/ "$SYNC_DIR"/ && echo "$(date +%T) synced to $SYNC_DIR"
 }
 latest_ckpt() { ls -d "$CK"/checkpoint_* 2>/dev/null | grep -E '/checkpoint_[0-9]+$' | sed 's/.*_//' | sort -n | tail -1; }
 env_steps() { [ -f "$EPLOG" ] && awk -F, 'NR>1{s+=$5} END{print s+0}' "$EPLOG" || echo 0; }
@@ -43,8 +45,9 @@ prune() {
 }
 
 # Restore from SYNC_DIR, and make the run folder something train_rlpd.py can resume from.
-if [ ! -d "$RUN_DIR" ] && [ -n "$SYNC_DIR" ] && [ -d "$SYNC_DIR" ]; then
-  echo "restoring $RUN_DIR from $SYNC_DIR"; mkdir -p "$RUN_DIR"; rsync -a "$SYNC_DIR"/ "$RUN_DIR"/
+if [ ! -d "$RUN_DIR" ] && [ -n "$SYNC_DIR" ] && [ -d "$SYNC_DIR/ckpt" ]; then
+  echo "restoring $RUN_DIR from $SYNC_DIR"; mkdir -p "$RUN_DIR"
+  rsync -a --exclude 'videos/' --exclude 'results.json' --exclude 'settings.json' --exclude 'DONE' "$SYNC_DIR"/ "$RUN_DIR"/
 fi
 if [ -d "$RUN_DIR" ] && [ -z "$(latest_ckpt)" ]; then
   # No checkpoint yet: the learner cannot resume (it would crash on latest_checkpoint=None), so start over.

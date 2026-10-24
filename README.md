@@ -24,6 +24,8 @@ copy our task in, so nothing upstream is vendored here.
 | `hilserl/smoke_test.sh` | Runs learner + actor together and stops after N env steps or N minutes |
 | `hilserl/run_training.sh` | Resumable training: learner + actor, checkpoints and buffer dumps pruned and copied to a sync folder (e.g. Google Drive); re-running it continues from the latest checkpoint |
 | `hilserl/record_video.py` | MP4 of a checkpoint's policy (or the scripted expert): 640x480 front view next to the policy's 128 px wrist camera, with episode, step and success overlaid |
+| `hilserl/evaluate.py` | Evaluates a checkpoint without expert help on fixed evaluation cubes: sampled actions and the policy's mode, results as JSON |
+| `hilserl/experiment_queue.py`, `make_demo_set.py` | Runs a list of experiments (settings that differ from run 2) one after another with training, evaluation, `DONE` markers and resume; builds nested demo sets; `summarize()` makes the comparison table (Wilson 95% CIs) and overlaid learning curves |
 | `hilserl/HILSERL_sim_colab.ipynb` | The whole HIL-SERL pipeline on Colab (L4/A100 recommended), with the run kept in Google Drive so a disconnect only costs the steps since the last checkpoint |
 | `conrft-sim/` | The task for ConRFT (Octo-small backbone) with `setup.sh`, import fixes (`apply_patches.py`), run scripts and a Colab notebook. See `conrft-sim/README.md` |
 
@@ -54,6 +56,14 @@ success or after 100 steps, frozen pretrained ResNet-10 encoder, RLPD with 50/50
 Environment variables: `HILSERL_SIM_MODE` (`demo`/`online`), `HILSERL_SIM_INTERVENE_PROB` (0.2),
 `HILSERL_SIM_BUFFER` (20000), `HILSERL_SIM_BATCH_SIZE` (256), `HILSERL_SIM_CKPT_PERIOD` (2000),
 `HILSERL_SIM_EPISODE_LOG` (CSV path), `HILSERL_SIM_HZ` (10).
+
+Experiment settings (defaults = run 2): `HILSERL_SIM_SEED` (42; cube positions, expert and networks),
+`HILSERL_SIM_CUBE_RANGE` (`default` x 0.25–0.55 m, y ±0.25 m; `wide` x 0.25–0.60 m, y ±0.32 m, 1.5x the
+area, limited by the front camera's view and by the arm not reaching cubes right in front of its base),
+`HILSERL_SIM_DISCOUNT` (0.97), `HILSERL_SIM_CTA_RATIO` (2), `HILSERL_SIM_ENCODER` (`resnet-pretrained` |
+`resnet`), `HILSERL_SIM_EXPERT_NOISE` (0.1), `HILSERL_SIM_TAKEOVER_STEPS` (0 = to the end of the episode),
+`HILSERL_SIM_LIFT_HEIGHT` (0.1), `HILSERL_SIM_MAX_EPISODE_STEPS` (100). In the notebook they are cell 1
+settings, or per-entry overrides in the experiment queue (cell 9).
 
 `HILSERL_SIM_HZ` caps the actor at 10 env steps/s, the real Franka's control rate. On a fast GPU the
 uncapped simulator (~80 steps/s on a Colab L4) would outrun the learner and leave far fewer gradient

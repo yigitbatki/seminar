@@ -16,8 +16,19 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
+import franka_sim.envs.panda_pick_gym_env as panda_pick
 from franka_sim.envs.panda_pick_gym_env import PandaPickCubeGymEnv
 from franka_sim.mujoco_gym_env import GymRenderingSpec
+
+
+# Cube start area (x, y in metres) and the matching reach limits of the arm's target point.
+# "default" is franka_sim's own setting; "wide" covers 1.5x the area: farther out to the sides and
+# front while the cube stays fully inside the front camera image. Closer to the robot base than
+# x = 0.27 (near y = 0) the arm cannot reach down to the cube, so the near edge stays at 0.25.
+CUBE_RANGES = {
+    "default": dict(sampling=[[0.25, -0.25], [0.55, 0.25]], cartesian=[[0.2, -0.3, 0], [0.6, 0.3, 0.5]]),
+    "wide": dict(sampling=[[0.25, -0.32], [0.60, 0.32]], cartesian=[[0.15, -0.40, 0], [0.70, 0.40, 0.5]]),
+}
 
 
 class SimPickCubeEnv(gym.Env):
@@ -40,8 +51,14 @@ class SimPickCubeEnv(gym.Env):
         action_scale=(0.05, 1.0),
         image_size=128,
         control_hz=0.0,
+        cube_range="default",
         seed=None,
     ):
+        # franka_sim reads these module-level bounds on every reset/step.
+        panda_pick._SAMPLING_BOUNDS = np.asarray(CUBE_RANGES[cube_range]["sampling"])
+        panda_pick._CARTESIAN_BOUNDS = np.asarray(CUBE_RANGES[cube_range]["cartesian"])
+        # franka_sim samples the cube with numpy's global RNG; keep a private, seeded copy of it.
+        self._cube_rng_state = np.random.RandomState(0 if seed is None else seed).get_state()
         self._env = PandaPickCubeGymEnv(
             action_scale=np.asarray(action_scale),
             render_spec=GymRenderingSpec(height=image_size, width=image_size),
@@ -114,8 +131,12 @@ class SimPickCubeEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         if seed is not None:
-            np.random.seed(seed)
+            self._cube_rng_state = np.random.RandomState(seed).get_state()
+        outer = np.random.get_state()
+        np.random.set_state(self._cube_rng_state)
         obs, _ = self._env.reset()
+        self._cube_rng_state = np.random.get_state()
+        np.random.set_state(outer)
         self._t = 0
         return self._convert_obs(obs), {"succeed": False}
 
