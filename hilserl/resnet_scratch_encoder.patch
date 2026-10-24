@@ -1,0 +1,12 @@
+diff --git a/serl_launcher/serl_launcher/vision/resnet_v1.py b/serl_launcher/serl_launcher/vision/resnet_v1.py
+index 1524265..e210bdc 100644
+--- a/serl_launcher/serl_launcher/vision/resnet_v1.py
++++ b/serl_launcher/serl_launcher/vision/resnet_v1.py
+@@ -214,6 +214,7 @@ class ResNetEncoder(nn.Module):
+         train: bool = True,
+         cond_var=None,
+         stop_gradient=False,
++        encode: bool = True,  # passed by EncodingWrapper; only the pretrained encoder uses it
+     ):
+         # put inputs in [-1, 1]
+         # x = observations.astype(jnp.float32) / 127.5 - 1.0

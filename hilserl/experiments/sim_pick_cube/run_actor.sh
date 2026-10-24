@@ -6,6 +6,7 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_PYTHON_CLIENT_MEM_FRACTION:-.2}
 cd "$(dirname "$0")/../.." && python train_rlpd.py \
     --exp_name=sim_pick_cube \
+    --seed=${HILSERL_SIM_SEED:-42} \
     --checkpoint_path=${CKPT:-$PWD/experiments/sim_pick_cube/run1} \
     --debug=${DEBUG:-True} \
     --actor "$@"

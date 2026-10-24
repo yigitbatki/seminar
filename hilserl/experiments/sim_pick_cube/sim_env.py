@@ -196,14 +196,16 @@ class SimExpertIntervention(gym.Wrapper):
 
     mode="demo":   the expert controls every step (for recording demos).
     mode="online": with probability `episode_prob`, the expert takes over from a
-                   random step until the end of the episode, like a human
-                   correcting a stuck robot. Set episode_prob=0 for no help.
+                   random step, like a human correcting a stuck robot. It keeps
+                   control to the end of the episode (takeover_steps=0) or hands
+                   back after `takeover_steps` steps. Set episode_prob=0 for no help.
     """
 
-    def __init__(self, env, mode="online", episode_prob=0.2, expert_noise=0.1, seed=0):
+    def __init__(self, env, mode="online", episode_prob=0.2, expert_noise=0.1, takeover_steps=0, seed=0):
         super().__init__(env)
         self.mode = mode
         self.episode_prob = episode_prob
+        self.takeover_steps = takeover_steps
         self.rng = np.random.default_rng(seed)
         self.expert = ScriptedPickExpert(env.unwrapped, noise=expert_noise, rng=self.rng)
         self._takeover_step = None
@@ -223,6 +225,8 @@ class SimExpertIntervention(gym.Wrapper):
 
     def step(self, action):
         intervened = self._takeover_step is not None and self._t >= self._takeover_step
+        if intervened and self.mode != "demo" and self.takeover_steps > 0:
+            intervened = self._t < self._takeover_step + self.takeover_steps
         if intervened:
             action = self.expert.act()
         obs, reward, terminated, truncated, info = self.env.step(action)

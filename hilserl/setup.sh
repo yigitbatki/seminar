@@ -27,6 +27,10 @@ clone_at https://github.com/rail-berkeley/serl.git serl "$SERL_COMMIT"
 if ! grep -q sim_pick_cube hil-serl/examples/experiments/mappings.py; then
   git -C hil-serl apply "$HERE/mappings.patch"
 fi
+# Upstream bug: the from-scratch ResNet encoder (encoder_type="resnet") rejects the `encode` argument.
+if ! grep -q "encode: bool = True,  # passed by EncodingWrapper" hil-serl/serl_launcher/serl_launcher/vision/resnet_v1.py; then
+  git -C hil-serl apply "$HERE/resnet_scratch_encoder.patch"
+fi
 cp -r "$HERE/experiments/sim_pick_cube" hil-serl/examples/experiments/
 cp "$HERE/requirements-hilserl.txt" "$HERE/install.sh" "$HERE/smoke_test.sh" .
 echo "hil-serl $(git -C hil-serl rev-parse --short HEAD), serl $(git -C serl rev-parse --short HEAD), experiment copied to hil-serl/examples/experiments/sim_pick_cube"
