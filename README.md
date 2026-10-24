@@ -23,6 +23,7 @@ copy our task in, so nothing upstream is vendored here.
 | `hilserl/install.sh`, `requirements-hilserl.txt` | Python 3.10 venv: jax 0.4.20 (CUDA 11), cuDNN 8.9.6.50, HIL-SERL's `serl_launcher`, `franka_sim` |
 | `hilserl/smoke_test.sh` | Runs learner + actor together and stops after N env steps or N minutes |
 | `hilserl/run_training.sh` | Resumable training: learner + actor, checkpoints and buffer dumps pruned and copied to a sync folder (e.g. Google Drive); re-running it continues from the latest checkpoint |
+| `hilserl/record_video.py` | MP4 of a checkpoint's policy (or the scripted expert): 640x480 front view next to the policy's 128 px wrist camera, with episode, step and success overlaid |
 | `hilserl/HILSERL_sim_colab.ipynb` | The whole HIL-SERL pipeline on Colab (L4/A100 recommended), with the run kept in Google Drive so a disconnect only costs the steps since the last checkpoint |
 | `conrft-sim/` | The task for ConRFT (Octo-small backbone) with `setup.sh`, import fixes (`apply_patches.py`), run scripts and a Colab notebook. See `conrft-sim/README.md` |
 
