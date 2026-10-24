@@ -21,6 +21,7 @@ KEEP_CKPT=${KEEP_CKPT:-2}
 KEEP_BUFFERS=${KEEP_BUFFERS:-10}
 SYNC_MIN=${SYNC_MIN:-10}
 export HILSERL_SIM_CKPT_PERIOD=${HILSERL_SIM_CKPT_PERIOD:-1000}
+export MPLBACKEND=Agg  # Colab's inline backend is not installed in the venv
 
 sync_out() {
   [ -n "$SYNC_DIR" ] || return 0
