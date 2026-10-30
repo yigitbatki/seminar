@@ -10,6 +10,9 @@
    demo/intervention half of each online batch instead of the whole batch.
 5. Pretraining always saves a checkpoint at its last step (upstream only saves when the step
    is a multiple of checkpoint_period).
+6. Update-to-data lock (same as ../hilserl/utd_lock.patch): the online learner publishes its
+   step in HILSERL_SIM_UTD_FILE, the actor waits when it is too far ahead. The learner's steps
+   continue from pretraining, so HILSERL_SIM_UTD_OFFSET (the pretrain step) is subtracted.
 
 Usage: python apply_patches.py /path/to/conrft
 """
@@ -68,6 +71,56 @@ patch(train, '''        print_green("Pretraining done")''',
                 FLAGS.checkpoint_path, agent.state, step=FLAGS.pretrain_steps, keep=100)
         print_green("Pretraining done")''',
       "step=FLAGS.pretrain_steps, keep=100")
+patch(train, r'''def print_green(x):
+    return print("\033[92m {}\033[00m".format(x))
+''', r'''def print_green(x):
+    return print("\033[92m {}\033[00m".format(x))
+
+
+UTD_FILE = os.environ.get("HILSERL_SIM_UTD_FILE", "")
+UTD = float(os.environ.get("HILSERL_SIM_UTD", "0"))
+UTD_SLACK = int(os.environ.get("HILSERL_SIM_UTD_SLACK", "500"))
+UTD_OFFSET = int(os.environ.get("HILSERL_SIM_UTD_OFFSET", "0"))
+
+
+def write_learner_step(step):
+    if UTD_FILE:
+        with open(UTD_FILE + ".tmp", "w") as f:
+            f.write(str(step))
+        os.replace(UTD_FILE + ".tmp", UTD_FILE)
+
+
+def read_learner_step():
+    try:
+        with open(UTD_FILE) as f:
+            return int(f.read())
+    except (OSError, ValueError):
+        return 0
+''', "HILSERL_SIM_UTD_FILE")
+patch(train, '''    for step in pbar:
+        timer.tick("total")
+''', '''    for step in pbar:
+        if UTD_FILE and UTD > 0:
+            with timer.context("wait_for_learner"):
+                while step > UTD_SLACK + read_learner_step() / UTD:
+                    time.sleep(0.05)
+        timer.tick("total")
+''', "wait_for_learner")
+patch(train, '''    online_start_step = start_step
+
+''', '''    online_start_step = start_step
+    write_learner_step(start_step - UTD_OFFSET)
+
+''', "write_learner_step(start_step - UTD_OFFSET)")
+patch(train, '''            server.publish_network(agent.state.params)
+
+        if step % config.log_period == 0 and wandb_logger:
+''', '''            server.publish_network(agent.state.params)
+        if step % 10 == 0:
+            write_learner_step(step - UTD_OFFSET)
+
+        if step % config.log_period == 0 and wandb_logger:
+''', "write_learner_step(step - UTD_OFFSET)")
 
 agent_file = root / "agents" / "continuous" / "conrft_single_octo_cp.py"
 patch(agent_file, '''        recon_loss = (mean_flat(recon_diffs) * weights).mean()''',

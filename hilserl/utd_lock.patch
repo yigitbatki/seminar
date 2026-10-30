@@ -1,0 +1,59 @@
+diff --git a/examples/train_rlpd.py b/examples/train_rlpd.py
+index 6b33492..890d8bf 100644
+--- a/examples/train_rlpd.py
++++ b/examples/train_rlpd.py
+@@ -61,6 +61,26 @@ def print_green(x):
+     return print("\033[92m {}\033[00m".format(x))
+ 
+ 
++UTD_FILE = os.environ.get("HILSERL_SIM_UTD_FILE", "")
++UTD = float(os.environ.get("HILSERL_SIM_UTD", "0"))
++UTD_SLACK = int(os.environ.get("HILSERL_SIM_UTD_SLACK", "500"))
++
++
++def write_learner_step(step):
++    if UTD_FILE:
++        with open(UTD_FILE + ".tmp", "w") as f:
++            f.write(str(step))
++        os.replace(UTD_FILE + ".tmp", UTD_FILE)
++
++
++def read_learner_step():
++    try:
++        with open(UTD_FILE) as f:
++            return int(f.read())
++    except (OSError, ValueError):
++        return 0
++
++
+ ##############################################################################
+ 
+ 
+@@ -151,6 +171,10 @@ def actor(agent, data_store, intvn_data_store, env, sampling_rng):
+ 
+     pbar = tqdm.tqdm(range(start_step, config.max_steps), dynamic_ncols=True)
+     for step in pbar:
++        if UTD_FILE and UTD > 0:
++            with timer.context("wait_for_learner"):
++                while step > UTD_SLACK + read_learner_step() / UTD:
++                    time.sleep(0.05)
+         timer.tick("total")
+ 
+         with timer.context("sample_actions"):
+@@ -253,6 +277,7 @@ def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None):
+         else 0
+     )
+     step = start_step
++    write_learner_step(start_step)
+ 
+     def stats_callback(type: str, payload: dict) -> dict:
+         """Callback for when server receives stats request."""
+@@ -340,6 +365,8 @@ def learner(rng, agent, replay_buffer, demo_buffer, wandb_logger=None):
+         if step > 0 and step % (config.steps_per_update) == 0:
+             agent = jax.block_until_ready(agent)
+             server.publish_network(agent.state.params)
++        if step % 10 == 0:
++            write_learner_step(step)
+ 
+         if step % config.log_period == 0 and wandb_logger:
+             wandb_logger.log(update_info, step=step)

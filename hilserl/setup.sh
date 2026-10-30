@@ -31,6 +31,10 @@ fi
 if ! grep -q "encode: bool = True,  # passed by EncodingWrapper" hil-serl/serl_launcher/serl_launcher/vision/resnet_v1.py; then
   git -C hil-serl apply "$HERE/resnet_scratch_encoder.patch"
 fi
+# Holds the actor back when the learner falls behind, so the update-to-data ratio does not depend on the GPU.
+if ! grep -q "HILSERL_SIM_UTD_FILE" hil-serl/examples/train_rlpd.py; then
+  git -C hil-serl apply "$HERE/utd_lock.patch"
+fi
 cp -r "$HERE/experiments/sim_pick_cube" hil-serl/examples/experiments/
 cp "$HERE/requirements-hilserl.txt" "$HERE/install.sh" "$HERE/smoke_test.sh" .
 echo "hil-serl $(git -C hil-serl rev-parse --short HEAD), serl $(git -C serl rev-parse --short HEAD), experiment copied to hil-serl/examples/experiments/sim_pick_cube"

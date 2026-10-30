@@ -71,6 +71,14 @@ uncapped simulator (~80 steps/s on a Colab L4) would outrun the learner and leav
 updates per env step than in the paper; the cap keeps it near one. Set it to 0 to disable (demo
 recording runs uncapped).
 
+The cap only helps while the learner keeps up with it, so on a slower runtime the ratio still drops.
+`HILSERL_SIM_UTD` (1, 0 = off) adds a lock: the actor waits whenever it is more than
+`HILSERL_SIM_UTD_SLACK` (500, keep it above `training_starts`) env steps ahead of learner updates / UTD.
+It holds the actor back only;
+it does not stop a faster learner from going above the ratio. ConRFT's online stage uses the same lock.
+Queue setting `UTD`; the results table shows it (runs without it as "UTD unlocked") and the measured
+ratio, final learner checkpoint / env steps.
+
 ## Quickstart: ConRFT
 ConRFT uses the same task file as HIL-SERL (`hilserl/experiments/sim_pick_cube/sim_env.py`), so cube
 positions, expert, interventions, 10 Hz rate and evaluation cubes are identical. Stages: SFT and

@@ -17,6 +17,9 @@
 #   KEEP_BUFFERS=10   actor buffer dumps kept (online; only for resuming)
 #   LEARNER_FRAC, ACTOR_FRAC   GPU memory caps (fractions of the card)
 #   CONRFT_SIM_CKPT_PERIOD     learner steps between checkpoints
+#   HILSERL_SIM_UTD=1          online: learner updates per env step the actor waits for (0 = no lock)
+#   HILSERL_SIM_UTD_SLACK=500  online: env steps the actor may be ahead of that ratio; keep it above
+#                              training_starts (100), or the actor stops before the learner starts
 set -u
 WORKDIR=${WORKDIR:-$HOME/conrft-sim-work}
 STAGE=${STAGE:?set STAGE to pretrain or online}
@@ -71,6 +74,12 @@ if [ "$STAGE" = online ]; then
   # The learner skips pretraining when its latest checkpoint is at or past --pretrain_steps.
   INIT_STEP=$(ls -d "$CK"/checkpoint_* | grep -E '/checkpoint_[0-9]+$' | sed 's/.*_//' | sort -n | head -1)
   PRETRAIN_STEPS=${INIT_STEP}
+  # The update-to-data lock counts online learner steps only. INIT_STEP cannot serve as the origin:
+  # prune removes the init checkpoint, so after a resume it is a later checkpoint.
+  [ -f "$RUN_DIR/online_init_step" ] || echo "${INIT_CKPT:-_$INIT_STEP}" | sed 's/.*_//' > "$RUN_DIR/online_init_step"
+  export HILSERL_SIM_UTD_FILE="$RUN_DIR/learner_step"
+  export HILSERL_SIM_UTD=${HILSERL_SIM_UTD:-1}
+  export HILSERL_SIM_UTD_OFFSET=$(cat "$RUN_DIR/online_init_step")
 fi
 RESUME=$([ -d "$CK" ] && echo "checkpoint $(latest_ckpt), $(env_steps) env steps" || echo fresh)
 mkdir -p "$LOGDIR"
