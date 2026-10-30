@@ -12,6 +12,9 @@
 #   KEEP_BUFFERS=10   actor buffer dumps kept (1000 env steps, ~0.19 GB each; only for resuming)
 #   LEARNER_FRAC=.72  ACTOR_FRAC=.15   GPU memory caps (6 GB card; use .6 / .25 on a 16 GB T4)
 #   HILSERL_SIM_CKPT_PERIOD=1000       learner steps between checkpoints
+#   HILSERL_SIM_UTD=1  learner updates per env step the actor waits for (0 = no lock)
+#   HILSERL_SIM_UTD_SLACK=500          env steps the actor may be ahead of that ratio; keep it above
+#                                      training_starts (100), or the actor stops before the learner starts
 set -u
 WORKDIR=${WORKDIR:-$HOME/hilserl-work}
 : "${DEMO_PATH:?set DEMO_PATH to the demo .pkl}"
@@ -27,6 +30,9 @@ export MPLBACKEND=Agg  # Colab's inline backend is not installed in the venv
 CK="$RUN_DIR/ckpt"
 LOGDIR="$RUN_DIR/logs"
 EPLOG="$LOGDIR/episodes.csv"
+# The learner publishes its step here for the actor; outside ckpt/ and logs/ (see utd_lock.patch).
+export HILSERL_SIM_UTD_FILE="$RUN_DIR/learner_step"
+export HILSERL_SIM_UTD=${HILSERL_SIM_UTD:-1}
 
 sync_out() {
   [ -n "$SYNC_DIR" ] || return 0

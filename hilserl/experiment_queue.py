@@ -11,6 +11,7 @@ For every entry: skip it if <DRIVE_ROOT>/<RUN_NAME>/DONE exists; otherwise make 
 exists, train (HIL-SERL: run_training.sh; ConRFT: ../conrft-sim/run_conrft.sh, both resume a
 partial run), evaluate the final checkpoint on fixed evaluation cubes, write results.json, then
 DONE. summarize() builds the comparison table and learning curves from all finished runs.
+Runs from before the update-to-data lock have no UTD in settings.json and show as "UTD unlocked".
 
 Paths come from the environment: WORKDIR (hilserl setup.sh's folder), CONRFT_WORKDIR (conrft-sim
 setup.sh's folder), DRIVE_ROOT (persistent results, e.g. MyDrive/hilserl-runs), LOCAL_ROOT (fast
@@ -32,14 +33,14 @@ CONRFT_HERE = os.path.join(os.path.dirname(HERE), "conrft-sim")
 DEFAULTS = dict(
     SEED=42, CUBE_RANGE="default", N_DEMOS=20, INTERVENE_PROB=0.2, TAKEOVER_STEPS=0, EXPERT_NOISE=0.1,
     LIFT_HEIGHT=0.1, MAX_EPISODE_STEPS=100, DISCOUNT=0.97, CTA_RATIO=2, ENCODER_TYPE="resnet-pretrained",
-    HZ=10, TARGET_ENV_STEPS=30000, EVAL_EPISODES=100,
+    HZ=10, TARGET_ENV_STEPS=30000, EVAL_EPISODES=100, UTD=1.0,
 )
 ENV_NAMES = dict(
     SEED="HILSERL_SIM_SEED", CUBE_RANGE="HILSERL_SIM_CUBE_RANGE", INTERVENE_PROB="HILSERL_SIM_INTERVENE_PROB",
     TAKEOVER_STEPS="HILSERL_SIM_TAKEOVER_STEPS", EXPERT_NOISE="HILSERL_SIM_EXPERT_NOISE",
     LIFT_HEIGHT="HILSERL_SIM_LIFT_HEIGHT", MAX_EPISODE_STEPS="HILSERL_SIM_MAX_EPISODE_STEPS",
     DISCOUNT="HILSERL_SIM_DISCOUNT", CTA_RATIO="HILSERL_SIM_CTA_RATIO", ENCODER_TYPE="HILSERL_SIM_ENCODER",
-    HZ="HILSERL_SIM_HZ", TARGET_ENV_STEPS="TARGET_ENV_STEPS",
+    HZ="HILSERL_SIM_HZ", TARGET_ENV_STEPS="TARGET_ENV_STEPS", UTD="HILSERL_SIM_UTD",
 )
 # ConRFT: same task settings; its own network (Octo-small), discount (fixed in its config) and losses.
 # STAGE "pretrain" = offline on the demos (Cal-ConRFT: Q 0.1 / BC 1.0, SFT: Q 0 / BC 1.0);
@@ -233,6 +234,16 @@ def _env_steps(csv_path):
     return sum(int(r[4]) for r in rows if len(r) >= 6)
 
 
+def _measured_utd(drive, name, settings, env_steps):
+    """Final learner checkpoint per env step; ConRFT's online learner counts on from its pretrain run."""
+    step = _latest_step(f"{drive}/{name}/ckpt")
+    if step is None or not env_steps:
+        return None
+    if settings.get("INIT_FROM"):
+        step -= _latest_step(f"{drive}/{settings['INIT_FROM']}/ckpt") or 0
+    return round(step / env_steps, 2)
+
+
 def run_entry(entry):
     workdir, drive, local = _paths()
     name = entry["RUN_NAME"]
@@ -242,8 +253,15 @@ def run_entry(entry):
         print(f"[{name}] already done, skipping", flush=True)
         return
     os.makedirs(sync, exist_ok=True)
+    recorded = {"RUN_NAME": name, "eval_only": bool(entry.get("eval_only")), **settings}
+    if entry.get("eval_only"):
+        # Training happened earlier: keep what that run recorded (no UTD = it had no lock).
+        path = f"{sync}/settings.json"
+        trained = json.load(open(path)) if os.path.exists(path) else {}
+        recorded.pop("UTD")
+        recorded.update({"UTD": trained["UTD"]} if "UTD" in trained else {})
     with open(f"{sync}/settings.json", "w") as f:
-        json.dump({"RUN_NAME": name, "eval_only": bool(entry.get("eval_only")), **settings}, f, indent=1)
+        json.dump(recorded, f, indent=1)
 
     conrft = settings["METHOD"] == "conrft"
     if not entry.get("eval_only"):
@@ -349,10 +367,13 @@ def summarize(names=None, out_prefix=None):
             label += f" (q {q}, bc {bc}" + (f", from {settings['INIT_FROM']})" if settings.get("INIT_FROM") else ")")
         else:
             label = "HIL-SERL"
-        skip = {"STAGE", "Q_WEIGHT", "BC_WEIGHT", "BC_DEMO_ONLY", "INIT_FROM", "METHOD"}
+        skip = {"STAGE", "Q_WEIGHT", "BC_WEIGHT", "BC_DEMO_ONLY", "INIT_FROM", "METHOD", "UTD"}
         changed = {k: v for k, v in settings.items() if k in defaults and k not in skip and v != defaults[k]}
         row = {"run": name, "method": label,
-               "settings": ", ".join(f"{k}={v}" for k, v in changed.items()) or "defaults"}
+               "settings": ", ".join(f"{k}={v}" for k, v in changed.items()) or "defaults",
+               "UTD": f"UTD {settings['UTD']}" if settings.get("UTD") else "UTD unlocked"}
+        if settings.get("STAGE") == "pretrain":
+            row["UTD"] = None  # offline, no env steps
         for mode in ("stochastic", "deterministic"):
             m = res.get(mode)
             if not m:
@@ -365,6 +386,7 @@ def summarize(names=None, out_prefix=None):
             df = pd.read_csv(csv)
             df["env_steps"] = df["length"].cumsum()
             row["train env steps"] = int(df["length"].sum())
+            row["measured UTD"] = _measured_utd(drive, name, settings, row["train env steps"])
             row["intervention rate"] = round(float((df["intervened_steps"] > 0).mean()), 2)
             own = df[df["intervened_steps"] == 0]
             curves[name] = (own["env_steps"], own["succeed"].rolling(20, min_periods=1).mean())
