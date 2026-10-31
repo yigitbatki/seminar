@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.join(args.workdir, "conrft", "examples"))
 import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
+from flax.serialization import from_state_dict  # noqa: E402
 from flax.training import checkpoints  # noqa: E402
 from octo.model.octo_model import OctoModel  # noqa: E402
 
@@ -65,8 +66,9 @@ steps = [int(re.sub(r".*_", "", p)) for p in glob.glob(f"{ckpt_dir}/checkpoint_*
 if not steps:
     sys.exit(f"no checkpoint_<step> folders in {ckpt_dir}")
 step = args.step or max(steps)
-ckpt = checkpoints.restore_checkpoint(ckpt_dir, agent.state, step=step)
-agent = agent.replace(state=agent.state.replace(params=ckpt.params, target_params=ckpt.target_params))
+ckpt = checkpoints.restore_checkpoint(ckpt_dir, None, step=step)  # no target: older checkpoints have more opt_states
+agent = agent.replace(state=agent.state.replace(params=from_state_dict(agent.state.params, ckpt["params"]),
+                                                target_params=from_state_dict(agent.state.target_params, ckpt["target_params"])))
 print(f"loaded {ckpt_dir}/checkpoint_{step}", flush=True)
 
 env.unwrapped._cube_rng_state = np.random.RandomState(args.eval_seed).get_state()

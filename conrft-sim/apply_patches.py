@@ -13,6 +13,11 @@
 6. Update-to-data lock (same as ../hilserl/utd_lock.patch): the online learner publishes its
    step in HILSERL_SIM_UTD_FILE, the actor waits when it is too far ahead. The learner's steps
    continue from pretraining, so HILSERL_SIM_UTD_OFFSET (the pretrain step) is subtracted.
+7. GPU memory: the checkpoint is restored before the agent goes to the device and without a
+   target, so a resumed run keeps no second copy. Each optimizer gets Adam state only for what
+   it can change: the critic's for the critic, the actor's for the actor without Octo (the
+   policy's Octo embedding is always under stop_gradient). Those gradients are exactly zero,
+   so training does not change; it removes 4 of the 6 copies of Octo (0.5 GB each).
 
 Usage: python apply_patches.py /path/to/conrft
 """
@@ -122,7 +127,73 @@ patch(train, '''            server.publish_network(agent.state.params)
         if step % config.log_period == 0 and wandb_logger:
 ''', "write_learner_step(step - UTD_OFFSET)")
 
+# The checkpoint's optimizer state is not used, and older checkpoints have more of it: no target.
+patch(train, '''from flax.training import checkpoints
+''', '''from flax.serialization import from_state_dict
+from flax.training import checkpoints
+''', "from flax.serialization import from_state_dict")
+patch(train, '''    # replicate agent across devices
+    # need the jnp.array to avoid a bug where device_put doesn't recognize primitives
+    agent = jax.device_put(jax.tree_map(
+        jnp.asarray, agent), sharding.replicate())
+
+    if FLAGS.checkpoint_path''', '''    if FLAGS.checkpoint_path''', "del ckpt")
+patch(train, '''        ckpt = checkpoints.restore_checkpoint(
+            FLAGS.checkpoint_path, agent.state,)
+        # agent = agent.replace(state=ckpt)
+
+        # Update params only, ignore the optimizer states
+        new_params = ckpt.params
+        new_target_params = ckpt.target_params
+
+        agent = agent.replace(state=agent.state.replace(
+            params=new_params, target_params=new_target_params))
+''', '''        ckpt = checkpoints.restore_checkpoint(FLAGS.checkpoint_path, None)
+
+        # Update params only, ignore the optimizer states
+        new_params = from_state_dict(agent.state.params, ckpt["params"])
+        new_target_params = from_state_dict(agent.state.target_params, ckpt["target_params"])
+        del ckpt
+
+        agent = agent.replace(state=agent.state.replace(
+            params=new_params, target_params=new_target_params))
+''', "del ckpt\n\n        agent = agent.replace")
+patch(train, '''        print_green(f"Loaded previous checkpoint at step {ckpt_number}.")
+''', '''        print_green(f"Loaded previous checkpoint at step {ckpt_number}.")
+
+    # replicate agent across devices
+    # need the jnp.array to avoid a bug where device_put doesn't recognize primitives
+    agent = jax.device_put(jax.tree_map(
+        jnp.asarray, agent), sharding.replicate())
+''', "step {ckpt_number}.\")\n\n    # replicate agent")
+
 agent_file = root / "agents" / "continuous" / "conrft_single_octo_cp.py"
+patch(agent_file, '''from serl_launcher.common.common import JaxRLTrainState''',
+      '''from flax.traverse_util import flatten_dict, unflatten_dict
+import optax
+
+from serl_launcher.common.common import JaxRLTrainState''', "import optax")
+patch(agent_file, '''class ConrftCPOctoAgentSingleArm(''', '''def _trained_by(network):
+    \"\"\"Labels for optax.multi_transform: an optimizer keeps state only for what it can change.\"\"\"
+    def labels(params):
+        def label(path):
+            if path[0] != f"modules_{network}":
+                return "frozen"
+            return "frozen" if network == "actor" and path[1:3] == ("encoder", "encoder") else "train"
+        return unflatten_dict({path: label(path) for path in flatten_dict(params)})
+    return labels
+
+
+class ConrftCPOctoAgentSingleArm(''', "def _trained_by")
+patch(agent_file, '''            "actor": make_optimizer(**actor_optimizer_kwargs),
+            "critic": make_optimizer(**critic_optimizer_kwargs),
+''', '''            "actor": optax.multi_transform(
+                {"train": make_optimizer(**actor_optimizer_kwargs), "frozen": optax.set_to_zero()},
+                _trained_by("actor")),
+            "critic": optax.multi_transform(
+                {"train": make_optimizer(**critic_optimizer_kwargs), "frozen": optax.set_to_zero()},
+                _trained_by("critic")),
+''', "_trained_by(\"actor\")")
 patch(agent_file, '''        recon_loss = (mean_flat(recon_diffs) * weights).mean()''',
       '''        if self.config.get("bc_demo_only", False):
             # Online batches are [online half, demo/intervention half]; imitate only the latter.

@@ -16,7 +16,7 @@
 #   KEEP_CKPT=2       checkpoints kept
 #   KEEP_BUFFERS=10   actor buffer dumps kept (online; only for resuming)
 #   LEARNER_FRAC, ACTOR_FRAC   GPU memory caps (fractions of the card) for the online stage
-#   PRETRAIN_FRAC=.85          GPU memory cap for pretraining, which has no actor to leave room for
+#   PRETRAIN_FRAC=.9           GPU memory cap for pretraining, which has no actor to leave room for
 #   CONRFT_SIM_CKPT_PERIOD     learner steps between checkpoints
 #   HILSERL_SIM_UTD=1          online: learner updates per env step the actor waits for (0 = no lock)
 #   HILSERL_SIM_UTD_SLACK=500  online: env steps the actor may be ahead of that ratio; keep it above
@@ -96,7 +96,7 @@ export CKPT="$CK" DEMO_PATH PRETRAIN_STEPS
 STAMP=$(date +%Y%m%d-%H%M%S)
 LLOG="$LOGDIR/learner-$STAGE-$STAMP.log"; ALOG="$LOGDIR/actor-$STAMP.log"
 if [ "$STAGE" = pretrain ]; then
-  XLA_PYTHON_CLIENT_MEM_FRACTION=${PRETRAIN_FRAC:-.85} bash experiments/sim_pick_cube/run_learner_conrft_pretrain.sh > "$LLOG" 2>&1 &
+  XLA_PYTHON_CLIENT_MEM_FRACTION=${PRETRAIN_FRAC:-.9} bash experiments/sim_pick_cube/run_learner_conrft_pretrain.sh > "$LLOG" 2>&1 &
 else
   # train_conrft_octo.py may ask "Press Enter to resume"; feed it newlines.
   yes "" | XLA_PYTHON_CLIENT_MEM_FRACTION=${LEARNER_FRAC:-.5} bash experiments/sim_pick_cube/run_learner_conrft.sh > "$LLOG" 2>&1 &
