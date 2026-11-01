@@ -64,7 +64,8 @@ agent = agent.replace(state=checkpoints.restore_checkpoint(ckpt_dir, agent.state
 print(f"loaded {ckpt_dir}/checkpoint_{step}", flush=True)
 
 results = {"checkpoint_step": step, "eval_seed": args.eval_seed, "episodes": args.episodes,
-           "cube_range": os.environ.get("HILSERL_SIM_CUBE_RANGE", "default")}
+           "cube_range": os.environ.get("HILSERL_SIM_CUBE_RANGE", "default"),
+           "task": os.environ.get("HILSERL_SIM_TASK", "pick_cube")}
 for mode in args.modes.split(","):
     env.unwrapped._cube_rng_state = np.random.RandomState(args.eval_seed).get_state()  # same cubes per mode
     rng = jax.random.PRNGKey(args.eval_seed)

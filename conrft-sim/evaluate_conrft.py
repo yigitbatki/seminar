@@ -89,6 +89,7 @@ k = sum(succeeded)
 results = {
     "method": "conrft", "checkpoint_step": step, "eval_seed": args.eval_seed, "episodes": args.episodes,
     "cube_range": os.environ.get("HILSERL_SIM_CUBE_RANGE", "default"),
+    "task": os.environ.get("HILSERL_SIM_TASK", "pick_cube"),
     "stochastic": {
         "successes": k,
         "success_rate": k / args.episodes,

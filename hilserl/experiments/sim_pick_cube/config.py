@@ -28,6 +28,7 @@ class TrainConfig(DefaultTrainingConfig):
       HILSERL_SIM_EXPERT_NOISE=0.1      std of the noise on the expert's xyz actions
       HILSERL_SIM_LIFT_HEIGHT=0.1       lift (m) that counts as success
       HILSERL_SIM_MAX_EPISODE_STEPS=100
+      HILSERL_SIM_TASK=pick_cube        pick_cube | peg_insert (the peg is held, so no gripper use)
       HILSERL_SIM_SEED=42               seeds the cube positions, the expert and (as --seed)
                                         train_rlpd.py's networks
       HILSERL_SIM_CUBE_RANGE=default    cube start area: default | wide (1.5x the area)
@@ -63,12 +64,14 @@ class TrainConfig(DefaultTrainingConfig):
     def get_environment(self, fake_env=False, save_video=False, classifier=False):
         # The seed also drives the cube positions and the expert's takeover/noise RNG.
         env_seed = int(os.environ.get("HILSERL_SIM_SEED", "42"))
+        task = os.environ.get("HILSERL_SIM_TASK", "pick_cube")
         env = SimPickCubeEnv(
             max_episode_length=self.max_traj_length,
             lift_height=float(os.environ.get("HILSERL_SIM_LIFT_HEIGHT", "0.1")),
             control_hz=float(os.environ.get("HILSERL_SIM_HZ", "10")),
             cube_range=os.environ.get("HILSERL_SIM_CUBE_RANGE", "default"),
             seed=env_seed,
+            task=task,
             cube_positions=np.load(os.environ["HILSERL_SIM_CUBE_POSITIONS"])
             if os.environ.get("HILSERL_SIM_CUBE_POSITIONS") else None,
         )
@@ -84,7 +87,7 @@ class TrainConfig(DefaultTrainingConfig):
         env = SERLObsWrapper(env, proprio_keys=self.proprio_keys)
         env = ChunkingWrapper(env, obs_horizon=1, act_exec_horizon=None)
         # The simulator gives the sparse success reward directly, so no reward classifier is needed.
-        env = SimGripperPenaltyWrapper(env, penalty=-0.02)
+        env = SimGripperPenaltyWrapper(env, penalty=0.0 if task == "peg_insert" else -0.02)
         log_path = os.environ.get("HILSERL_SIM_EPISODE_LOG")
         if log_path and not fake_env:
             env = EpisodeLogWrapper(env, log_path)

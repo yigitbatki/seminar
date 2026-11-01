@@ -22,7 +22,7 @@ class TrainConfig(DefaultTrainingConfig):
     use the same HILSERL_SIM_* environment variables:
       HILSERL_SIM_MODE=demo|online, HILSERL_SIM_INTERVENE_PROB=0.2, HILSERL_SIM_TAKEOVER_STEPS=0,
       HILSERL_SIM_EXPERT_NOISE=0.1, HILSERL_SIM_SEED=42, HILSERL_SIM_CUBE_RANGE=default|wide,
-      HILSERL_SIM_CUBE_POSITIONS=f.npy, HILSERL_SIM_LIFT_HEIGHT=0.1,
+      HILSERL_SIM_CUBE_POSITIONS=f.npy, HILSERL_SIM_LIFT_HEIGHT=0.1, HILSERL_SIM_TASK=pick_cube|peg_insert,
       HILSERL_SIM_MAX_EPISODE_STEPS=100, HILSERL_SIM_HZ=10, HILSERL_SIM_EPISODE_LOG=path.csv
     ConRFT's own settings use CONRFT_SIM_*: BUFFER (replay capacity), BATCH_SIZE, CKPT_PERIOD,
     and CONRFT_OCTO_PATH.
@@ -48,7 +48,9 @@ class TrainConfig(DefaultTrainingConfig):
     setup_mode = "single-arm-learned-gripper"
     success_reward = 10.0
     reward_neg = -0.05
-    task_desc = "Pick up the red cube and lift it"
+    task = os.environ.get("HILSERL_SIM_TASK", "pick_cube")
+    task_desc = {"pick_cube": "Pick up the red cube and lift it",
+                 "peg_insert": "Insert the red peg into the square hole"}[task]
     # Octo-small from Hugging Face. Point this to a local copy if you have one.
     octo_path = os.environ.get("CONRFT_OCTO_PATH", "hf://rail-berkeley/octo-small")
 
@@ -67,6 +69,7 @@ class TrainConfig(DefaultTrainingConfig):
             cube_range=os.environ.get("HILSERL_SIM_CUBE_RANGE", "default"),
             cube_positions=np.load(positions) if positions else None,
             seed=seed,
+            task=self.task,
         )
         if not fake_env:
             env = SimExpertIntervention(
@@ -80,7 +83,7 @@ class TrainConfig(DefaultTrainingConfig):
         env = SERLObsWrapper(env, proprio_keys=self.proprio_keys)
         env = ChunkingWrapper(env, obs_horizon=stack_obs_num, act_exec_horizon=None)
         # The simulator gives the sparse success reward directly, so no reward classifier is needed.
-        env = SimGripperPenaltyWrapper(env, penalty=-0.02)
+        env = SimGripperPenaltyWrapper(env, penalty=0.0 if self.task == "peg_insert" else -0.02)
         log_path = os.environ.get("HILSERL_SIM_EPISODE_LOG")
         if log_path and not fake_env:
             env = EpisodeLogWrapper(env, log_path)

@@ -1,4 +1,4 @@
-"""Simulated Franka cube-lifting task for HIL-SERL.
+"""Simulated Franka tasks for HIL-SERL: cube lifting (task="pick_cube") and peg insertion ("peg_insert").
 
 Wraps SERL's MuJoCo `franka_sim` PandaPickCube environment so that it looks like
 HIL-SERL's real-robot environment: gymnasium API, two 128x128 cameras ("front"
@@ -6,11 +6,15 @@ and "wrist", the size HIL-SERL's ResNet-10 encoder uses), a sparse 0/1 success
 reward with the episode ending on success (what the reward classifier wrapper
 does on the real robot), `info["succeed"]`, and `info["intervene_action"]` from a
 scripted expert that stands in for the human with the SpaceMouse.
+
+peg_insert mirrors HIL-SERL's pregrasped insertion tasks (RAM, USB): a square peg fixed to the
+gripper goes into a square hole, whose position changes every episode, with about 1 mm clearance.
 """
 import copy
 import csv
 import os
 import time
+from pathlib import Path
 
 import cv2
 import gymnasium as gym
@@ -33,13 +37,68 @@ CUBE_RANGES = {
 }
 
 
+# Peg insertion. Lengths in metres; the peg is 20 x 20 x 60 mm and its tip is 40 mm below the fingertips.
+PEG_HALF_WIDTH = 0.010
+PEG_TIP_BELOW_TCP = 0.040
+HOLE_HALF_WIDTH = 0.011
+HOLE_DEPTH = 0.030
+HOLE_SUCCESS_DEPTH = 0.020
+HOLE_SUCCESS_XY = 0.002
+FIXTURE_WALL = 0.030
+FIXTURE_XY = [[0.45, -0.10], [0.55, 0.10]]
+PEG_START_OFFSET = 0.025  # of the TCP from home, per axis
+PEG_ACTION_SCALE = 0.02
+PEG_CONTROL_DT = 0.1  # simulated seconds per env step: the arm settles within a step, like at 10 Hz
+PEG_LEASH = 0.01  # the arm's target stays this close to the TCP before each step, which limits contact forces
+PEG_GRIPPER = 0.6  # fingers rest on the peg's sides
+PEG_SETTLE_STEPS = 300  # physics steps after a reset
+# TCP limits around the fixture; the lowest point keeps the peg tip just above the hole's floor.
+PEG_CARTESIAN_BOUNDS = [[0.30, -0.25, PEG_TIP_BELOW_TCP + 0.003], [0.65, 0.25, 0.50]]
+
+
+def _peg_xml():
+    """Writes franka_sim's scene with the peg and the fixture next to its XML files; returns the path.
+
+    The peg collides only with the fixture, which collides with the robot too. The TCP limits keep
+    the peg off the floor.
+    """
+    xmls = Path(panda_pick.__file__).parent / "xmls"
+    h, t, d = HOLE_HALF_WIDTH, FIXTURE_WALL, HOLE_DEPTH
+    # Half-size and position of the two walls along x, then the two along y.
+    wall = 'type="box" contype="3" conaffinity="3" friction="0.3 0.005 0.0001" rgba="0.9 0.7 0.1 1"'
+    fixture = f"""
+    <body name="peg_fixture" pos="0.5 0 0">
+      <geom name="hole_wall_px" {wall} pos="{h + t / 2} 0 {d / 2}" size="{t / 2} {h + t} {d / 2}"/>
+      <geom name="hole_wall_nx" {wall} pos="{-h - t / 2} 0 {d / 2}" size="{t / 2} {h + t} {d / 2}"/>
+      <geom name="hole_wall_py" {wall} pos="0 {h + t / 2} {d / 2}" size="{h} {t / 2} {d / 2}"/>
+      <geom name="hole_wall_ny" {wall} pos="0 {-h - t / 2} {d / 2}" size="{h} {t / 2} {d / 2}"/>
+      <geom name="hole_floor" type="box" contype="0" conaffinity="0" pos="0 0 0.0005" size="{h} {h} 0.0005" rgba="0.05 0.05 0.05 1"/>
+    </body>"""
+    half_length = 0.030
+    z = 0.145 + PEG_TIP_BELOW_TCP - half_length  # the pinch site is 0.145 from the gripper base
+    peg = f"""
+                          <geom name="peg" type="box" pos="0 0 {z}" size="{PEG_HALF_WIDTH} {PEG_HALF_WIDTH} {half_length}" mass="0.05"
+                                contype="2" conaffinity="2" condim="3" friction="0.3 0.005 0.0001" rgba="0.8 0.15 0.1 1"/>
+                          <site name="peg_tip" pos="0 0 {0.145 + PEG_TIP_BELOW_TCP}"/>"""
+    panda = (xmls / "panda.xml").read_text()
+    anchor = '<site name="pinch" pos="0 0 0.145"/>'
+    arena = (xmls / "arena.xml").read_text().replace('file="panda.xml"', 'file="panda_peg.xml"')
+    arena = arena.replace("</worldbody>", fixture + "\n  </worldbody>")
+    for name, text in (("panda_peg.xml", panda.replace(anchor, anchor + peg)), ("arena_peg.xml", arena)):
+        tmp = xmls / f"{name}.{os.getpid()}.tmp"  # the learner and the actor both get here
+        tmp.write_text(text)
+        os.replace(tmp, xmls / name)
+    return xmls / "arena_peg.xml"
+
+
 class SimPickCubeEnv(gym.Env):
-    """Image-based cube lifting with a sparse reward.
+    """Image-based manipulation with a sparse reward: cube lifting, or peg insertion (task="peg_insert").
 
     Action: [dx, dy, dz, drx, dry, drz, grasp] in [-1, 1], the same 7-D layout as
     HIL-SERL's real Franka with a learned gripper (the grasp critic reads the last entry). The simulated gripper
     keeps a fixed orientation, so the rotation entries are ignored. Position deltas
     are scaled by `action_scale[0]` metres; grasp > 0.5 closes the gripper, < -0.5 opens it.
+    In peg_insert the peg stays in the gripper, so the grasp entry has no effect.
     """
 
     metadata = {"render_modes": []}
@@ -58,14 +117,24 @@ class SimPickCubeEnv(gym.Env):
         image_keys=("front", "wrist"),
         wrist_size=None,
         cube_positions=None,
+        task="pick_cube",
     ):
         """image_size is the front camera's (and rendering) resolution; wrist_size, if different,
         resizes the wrist camera. image_keys names the two cameras in the observation (ConRFT
         uses "side_policy_256" at 256 px and "wrist_1" at 128 px). cube_positions, an (N, 2)
-        array of cube x, y, replaces the random cube positions (used in order, cycling)."""
+        array of cube x, y, replaces the random cube positions (used in order, cycling).
+        peg_insert has its own action scale, reach limits and fixture positions."""
+        if task not in ("pick_cube", "peg_insert"):
+            raise ValueError(f"unknown task {task}")
+        self.task = task
         # franka_sim reads these module-level bounds on every reset/step.
         panda_pick._SAMPLING_BOUNDS = np.asarray(CUBE_RANGES[cube_range]["sampling"])
         panda_pick._CARTESIAN_BOUNDS = np.asarray(CUBE_RANGES[cube_range]["cartesian"])
+        peg = task == "peg_insert"
+        if peg:
+            panda_pick._CARTESIAN_BOUNDS = np.asarray(PEG_CARTESIAN_BOUNDS)
+            panda_pick._XML_PATH = _peg_xml()
+            action_scale = (PEG_ACTION_SCALE, 1.0)
         # franka_sim samples the cube with numpy's global RNG; keep a private, seeded copy of it.
         self._cube_rng_state = np.random.RandomState(0 if seed is None else seed).get_state()
         self._env = PandaPickCubeGymEnv(
@@ -75,7 +144,13 @@ class SimPickCubeEnv(gym.Env):
             image_obs=True,
             time_limit=1e6,  # episode length is handled here instead
             seed=0 if seed is None else seed,
+            **(dict(control_dt=PEG_CONTROL_DT) if peg else {}),
         )
+        if peg:
+            sim = self._env
+            sim._model.geom_rgba[sim._model.geom("block").id, 3] = 0.0  # franka_sim needs the cube; hide it
+            self._fixture_id = sim._model.body("peg_fixture").id
+            self._peg_tip_id = sim._model.site("peg_tip").id
         self.front_key, self.wrist_key = image_keys
         self.wrist_size = wrist_size or image_size
         self.cube_positions = None if cube_positions is None else np.asarray(cube_positions, dtype=np.float64)
@@ -129,6 +204,15 @@ class SimPickCubeEnv(gym.Env):
     def z_init(self):
         return self._env._z_init
 
+    @property
+    def peg_tip(self):
+        return self._env._data.site_xpos[self._peg_tip_id].copy()
+
+    @property
+    def hole_top(self):
+        """Centre of the hole's opening."""
+        return self._env._data.xpos[self._fixture_id] + np.array([0.0, 0.0, HOLE_DEPTH])
+
     def _convert_obs(self, obs):
         wrist = obs["images"]["wrist"]
         if wrist.shape[0] != self.wrist_size:
@@ -151,6 +235,8 @@ class SimPickCubeEnv(gym.Env):
         outer = np.random.get_state()
         np.random.set_state(self._cube_rng_state)
         obs, _ = self._env.reset()
+        if self.task == "peg_insert":
+            obs = self._reset_peg()
         self._cube_rng_state = np.random.get_state()
         np.random.set_state(outer)
         if self.cube_positions is not None:
@@ -164,6 +250,25 @@ class SimPickCubeEnv(gym.Env):
         self._t = 0
         return self._convert_obs(obs), {"succeed": False}
 
+    def _reset_peg(self):
+        """Places the fixture and moves the arm to its start, with franka_sim's RNG like the cube."""
+        sim, model, data = self._env, self._env._model, self._env._data
+        data.jnt("block").qpos[:3] = (-0.6, 0.6, sim._block_z)  # out of the way
+        model.body_pos[self._fixture_id][:2] = np.random.uniform(*FIXTURE_XY)
+        data.mocap_pos[0] += np.random.uniform(-PEG_START_OFFSET, PEG_START_OFFSET, size=3)
+        data.ctrl[sim._gripper_ctrl_id] = PEG_GRIPPER * 255
+        for _ in range(PEG_SETTLE_STEPS):
+            data.ctrl[sim._panda_ctrl_ids] = panda_pick.opspace(
+                model=model, data=data, site_id=sim._pinch_site_id, dof_ids=sim._panda_dof_ids,
+                pos=data.mocap_pos[0], ori=data.mocap_quat[0], joint=panda_pick._PANDA_HOME, gravity_comp=True,
+            )
+            mujoco.mj_step(model, data)
+        return sim._compute_observation()
+
+    def _peg_inserted(self):
+        tip, top = self.peg_tip, self.hole_top
+        return bool(top[2] - tip[2] >= HOLE_SUCCESS_DEPTH and np.linalg.norm((tip - top)[:2]) < HOLE_SUCCESS_XY)
+
     def step(self, action):
         if self.control_hz > 0:
             now = time.monotonic()
@@ -176,10 +281,17 @@ class SimPickCubeEnv(gym.Env):
             [*np.clip(action[:3], -1.0, 1.0), 1.0 if grasp > 0.5 else (-1.0 if grasp < -0.5 else 0.0)],
             dtype=np.float32,
         )
+        if self.task == "peg_insert":
+            sim_action[3] = 0.0
+            data = self._env._data
+            data.mocap_pos[0] = self.tcp_pos + np.clip(data.mocap_pos[0] - self.tcp_pos, -PEG_LEASH, PEG_LEASH)
         obs, _, _, _, _ = self._env.step(sim_action)
         self._t += 1
 
-        succeed = bool(self.block_pos[2] - self.z_init >= self.lift_height)
+        if self.task == "peg_insert":
+            succeed = self._peg_inserted()
+        else:
+            succeed = bool(self.block_pos[2] - self.z_init >= self.lift_height)
         reward = self.success_reward if succeed else self.reward_neg
         # Like HIL-SERL's real FrankaEnv: the episode is "done" on success or on timeout,
         # and truncated stays False (record_demos.py only checks `done`).
@@ -236,6 +348,62 @@ class ScriptedPickExpert:
         return np.concatenate([delta, np.zeros(3), [grasp]]).astype(np.float32)
 
 
+class ScriptedPegExpert:
+    """Privileged peg insertion: over the hole, align, descend; if the peg jams, lift and align again.
+
+    The steps are measured from the peg tip, so errors in tracking the arm's target do not add up.
+    """
+
+    ALIGN_HEIGHT = 0.012  # of the peg tip above the hole's opening
+    ALIGNED = 0.001
+    DESCENT = 0.008  # per step
+    LIFT = 0.005
+    JAM_STEPS = 3
+
+    def __init__(self, env: SimPickCubeEnv, noise=0.0, rng=None):
+        self.env = env
+        self.noise = noise
+        self.rng = rng or np.random.default_rng()
+        self.reset()
+
+    def reset(self):
+        self.phase = "above"
+        self.lowest, self.stuck, self.lift_to = np.inf, 0, 0.0
+
+    def act(self):
+        env = self.env
+        tip, top = env.peg_tip, env.hole_top
+        xy_error = (top - tip)[:2]
+        aligned = np.linalg.norm(xy_error) < self.ALIGNED
+        z_goal = top[2] + self.ALIGN_HEIGHT
+        if self.phase == "above" and aligned and abs(tip[2] - z_goal) < 0.004:
+            self.phase = "insert"
+            self.lowest, self.stuck = tip[2], 0
+        if self.phase == "insert":
+            z_goal = tip[2] - self.DESCENT
+            if tip[2] < self.lowest - 0.0005:
+                self.lowest, self.stuck = tip[2], 0
+            else:
+                self.stuck += 1
+            if self.stuck >= self.JAM_STEPS:
+                self.phase = "lift"
+                self.lift_to = tip[2] + self.LIFT
+        if self.phase == "lift":
+            z_goal = self.lift_to
+            if tip[2] >= self.lift_to - 0.001:
+                self.phase = "realign"
+        if self.phase == "realign":
+            z_goal = self.lift_to
+            if aligned:
+                self.phase = "insert"
+                self.lowest, self.stuck = tip[2], 0
+        target = np.array([*xy_error, z_goal - tip[2]])
+        delta = np.clip(target / PEG_ACTION_SCALE, -1.0, 1.0)
+        if self.noise > 0:
+            delta = np.clip(delta + self.rng.normal(0.0, self.noise, size=3), -1.0, 1.0)
+        return np.concatenate([delta, np.zeros(4)]).astype(np.float32)
+
+
 class SimExpertIntervention(gym.Wrapper):
     """Stands in for HIL-SERL's SpacemouseIntervention.
 
@@ -252,7 +420,8 @@ class SimExpertIntervention(gym.Wrapper):
         self.episode_prob = episode_prob
         self.takeover_steps = takeover_steps
         self.rng = np.random.default_rng(seed)
-        self.expert = ScriptedPickExpert(env.unwrapped, noise=expert_noise, rng=self.rng)
+        expert = ScriptedPegExpert if env.unwrapped.task == "peg_insert" else ScriptedPickExpert
+        self.expert = expert(env.unwrapped, noise=expert_noise, rng=self.rng)
         self._takeover_step = None
         self._t = 0
 

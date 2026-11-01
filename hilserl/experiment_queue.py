@@ -4,6 +4,7 @@ Each entry is a dict with RUN_NAME and the settings that differ from the method'
     {"RUN_NAME": "seed43", "SEED": 43}                               (HIL-SERL, run 2's settings)
     {"RUN_NAME": "wide_s42", "CUBE_RANGE": "wide"}
     {"RUN_NAME": "run2", "eval_only": True}
+    {"RUN_NAME": "peg_s42", "TASK": "peg_insert", "TARGET_ENV_STEPS": 50000}
     {"RUN_NAME": "conrft_cal_s42", "METHOD": "conrft", "STAGE": "pretrain"}          (Cal-ConRFT)
     {"RUN_NAME": "conrft_sft_s42", "METHOD": "conrft", "STAGE": "pretrain", "Q_WEIGHT": 0}
     {"RUN_NAME": "conrft_hil_s42", "METHOD": "conrft", "INIT_FROM": "conrft_cal_s42"}  (HIL-ConRFT)
@@ -33,14 +34,17 @@ CONRFT_HERE = os.path.join(os.path.dirname(HERE), "conrft-sim")
 DEFAULTS = dict(
     SEED=42, CUBE_RANGE="default", N_DEMOS=20, INTERVENE_PROB=0.2, TAKEOVER_STEPS=0, EXPERT_NOISE=0.1,
     LIFT_HEIGHT=0.1, MAX_EPISODE_STEPS=100, DISCOUNT=0.97, CTA_RATIO=2, ENCODER_TYPE="resnet-pretrained",
-    HZ=10, TARGET_ENV_STEPS=30000, EVAL_EPISODES=100, UTD=1.0,
+    HZ=10, TARGET_ENV_STEPS=30000, EVAL_EPISODES=100, UTD=1.0, TASK="pick_cube",
 )
+# Defaults that differ per task. The expert's noise is relative to the action scale, 2 cm for the peg.
+TASK_DEFAULTS = {"peg_insert": dict(EXPERT_NOISE=0.05)}
 ENV_NAMES = dict(
     SEED="HILSERL_SIM_SEED", CUBE_RANGE="HILSERL_SIM_CUBE_RANGE", INTERVENE_PROB="HILSERL_SIM_INTERVENE_PROB",
     TAKEOVER_STEPS="HILSERL_SIM_TAKEOVER_STEPS", EXPERT_NOISE="HILSERL_SIM_EXPERT_NOISE",
     LIFT_HEIGHT="HILSERL_SIM_LIFT_HEIGHT", MAX_EPISODE_STEPS="HILSERL_SIM_MAX_EPISODE_STEPS",
     DISCOUNT="HILSERL_SIM_DISCOUNT", CTA_RATIO="HILSERL_SIM_CTA_RATIO", ENCODER_TYPE="HILSERL_SIM_ENCODER",
     HZ="HILSERL_SIM_HZ", TARGET_ENV_STEPS="TARGET_ENV_STEPS", UTD="HILSERL_SIM_UTD",
+    TASK="HILSERL_SIM_TASK",
 )
 # ConRFT: same task settings; its own network (Octo-small), discount (fixed in its config) and losses.
 # STAGE "pretrain" = offline on the demos (Cal-ConRFT: Q 0.1 / BC 1.0, SFT: Q 0 / BC 1.0);
@@ -51,7 +55,7 @@ CONRFT_DEFAULTS = dict(
     BC_DEMO_ONLY=False, PRETRAIN_STEPS=20000, INIT_FROM=None,
 )
 CONRFT_STAGE_WEIGHTS = {"pretrain": (0.1, 1.0), "online": (1.0, 0.1)}
-DEMO_TASK_KEYS = ("CUBE_RANGE", "EXPERT_NOISE", "LIFT_HEIGHT", "MAX_EPISODE_STEPS")
+DEMO_TASK_KEYS = ("TASK", "CUBE_RANGE", "EXPERT_NOISE", "LIFT_HEIGHT", "MAX_EPISODE_STEPS")
 RECORD_SEED = 1001  # demos recorded here never reuse run 2's demo episodes
 
 
@@ -75,7 +79,8 @@ def _settings(entry):
     unknown = set(entry) - set(defaults) - {"RUN_NAME", "eval_only", "METHOD"}
     if unknown:
         raise ValueError(f"{entry['RUN_NAME']}: unknown settings {sorted(unknown)}")
-    settings = {**defaults, **{k: v for k, v in entry.items() if k in defaults}, "METHOD": method}
+    task_defaults = TASK_DEFAULTS.get(entry.get("TASK"), {})
+    settings = {**defaults, **task_defaults, **{k: v for k, v in entry.items() if k in defaults}, "METHOD": method}
     if method == "conrft":
         if settings["STAGE"] not in CONRFT_STAGE_WEIGHTS:
             raise ValueError(f"{entry['RUN_NAME']}: STAGE must be pretrain or online")
@@ -367,9 +372,9 @@ def summarize(names=None, out_prefix=None):
             label += f" (q {q}, bc {bc}" + (f", from {settings['INIT_FROM']})" if settings.get("INIT_FROM") else ")")
         else:
             label = "HIL-SERL"
-        skip = {"STAGE", "Q_WEIGHT", "BC_WEIGHT", "BC_DEMO_ONLY", "INIT_FROM", "METHOD", "UTD"}
+        skip = {"STAGE", "Q_WEIGHT", "BC_WEIGHT", "BC_DEMO_ONLY", "INIT_FROM", "METHOD", "UTD", "TASK"}
         changed = {k: v for k, v in settings.items() if k in defaults and k not in skip and v != defaults[k]}
-        row = {"run": name, "method": label,
+        row = {"run": name, "method": label, "task": settings.get("TASK", "pick_cube"),
                "settings": ", ".join(f"{k}={v}" for k, v in changed.items()) or "defaults",
                "UTD": f"UTD {settings['UTD']}" if settings.get("UTD") else "UTD unlocked"}
         if settings.get("STAGE") == "pretrain":

@@ -66,6 +66,12 @@ area, limited by the front camera's view and by the arm not reaching cubes right
 `HILSERL_SIM_LIFT_HEIGHT` (0.1), `HILSERL_SIM_MAX_EPISODE_STEPS` (100). In the notebook they are cell 1
 settings, or per-entry overrides in the experiment queue (cell 9).
 
+`HILSERL_SIM_TASK` (`pick_cube`) selects the task; both methods share it. `peg_insert` mirrors
+HIL-SERL's pregrasped insertion tasks: a 20 x 20 mm peg held in the gripper goes 20 mm into a 22 x 22 mm
+hole whose position changes each episode (x 0.45–0.55 m, y ±0.10 m). Actions move at most 2 cm, the
+grasp entry has no effect, and 0.1 s of simulated time passes per step. It records its own demos, with
+expert noise 0.05.
+
 `HILSERL_SIM_HZ` caps the actor at 10 env steps/s, the real Franka's control rate. On a fast GPU the
 uncapped simulator (~80 steps/s on a Colab L4) would outrun the learner and leave far fewer gradient
 updates per env step than in the paper; the cap keeps it near one. Set it to 0 to disable (demo
