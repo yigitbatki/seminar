@@ -6,7 +6,7 @@ WORKDIR="${1:-$HOME/hilserl-work}"
 cd "$WORKDIR"
 command -v uv >/dev/null 2>&1 || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
 export PATH="$HOME/.local/bin:$PATH" UV_HTTP_TIMEOUT=600
-# Colab points uv at the system Python (3.12+); always target our 3.10 venv instead.
+# Colab points uv at the system Python (3.12+); always target the 3.10 venv instead.
 unset UV_SYSTEM_PYTHON UV_PYTHON
 [ -x .venv/bin/python ] && ! .venv/bin/python -c 'import sys; assert sys.version_info[:2] == (3, 10)' 2>/dev/null && rm -rf .venv
 [ -d .venv ] || uv venv -p 3.10 .venv

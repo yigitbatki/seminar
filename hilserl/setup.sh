@@ -2,7 +2,7 @@
 # Sets up HIL-SERL with the simulated sim_pick_cube task.
 # Usage:  bash setup.sh [WORKDIR]      (SKIP_INSTALL=1 to only clone, patch and copy)
 # Clones rail-berkeley/hil-serl and rail-berkeley/serl (for franka_sim) at pinned commits,
-# applies our mappings.py change, copies the experiment in, then runs install.sh.
+# applies my mappings.py change, copies the experiment in, then runs install.sh.
 set -euo pipefail
 
 WORKDIR="${1:-$HOME/hilserl-work}"

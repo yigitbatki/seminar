@@ -39,7 +39,7 @@ echo "conrft $(git -C conrft rev-parse --short HEAD), octo $(git -C octo rev-par
 [ "${SKIP_INSTALL:-0}" = "1" ] && exit 0
 
 # 4. Python 3.10 environment (Octo needs TensorFlow 2.15, which has no wheels for Python 3.12).
-# Colab points uv at the system Python (3.12+); always target our 3.10 venv instead.
+# Colab points uv at the system Python (3.12+); always target the 3.10 venv instead.
 unset UV_SYSTEM_PYTHON UV_PYTHON
 [ -d .venv ] || uv venv -p 3.10 .venv
 export VIRTUAL_ENV="$WORKDIR/.venv"

@@ -11,8 +11,8 @@ The task is SERL's MuJoCo `franka_sim` PandaPickCube: lift a cube by 10 cm from 
 state replaces the human with the SpaceMouse: it records the demos and takes over during online
 training (`info["intervene_action"]`, in a configurable fraction of episodes).
 
-This repository holds only our files. The setup scripts clone the upstream code at pinned commits and
-copy our task in, so nothing upstream is vendored here.
+This repository holds only my files. The setup scripts clone the upstream code at pinned commits and
+copy my task in, so nothing upstream is vendored here.
 
 ## Layout
 | Path | What it is |
