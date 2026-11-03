@@ -16,6 +16,7 @@ The task file (`sim_env.py`) is shared with the HIL-SERL setup in `../hilserl`, 
 | `octo_test.sh` | A short run with the real Octo-small that prints peak GPU memory and speeds |
 | `ConRFT_sim_colab.ipynb` | The whole pipeline on Colab, as a resumable experiment queue (uses `../hilserl/experiment_queue.py`) |
 | `test_sim_env.py` | Checks observation shapes and the expert's success rate (no Octo needed) |
+| `record_video_conrft.py` | MP4 of a trained ConRFT policy, like `../hilserl/record_video.py` (notebook section 7) |
 | `tools/tiny_octo_smoke.py` | Runs any ConRFT script with a tiny random Octo, for plumbing tests without the real weights (`CONRFT_TINY_OCTO=1`) |
 
 ## Stages
